@@ -5,13 +5,16 @@ References:
    [1] Murphy, K. P., Machine learning: A probabilistic perspective,
        The MIT Press, 2012
 
-
+   [2] Bishop, C. M, Pattern Recognition and Machine Learning
+       (Information Science and Statistics), Jordan, M.; Kleinberg,
+       J. & Scholkopf, B. (Eds.), Springer, 2006
 
 .. sectionauthor:: Asher Bender <a.bender.dev@gmail.com>
 .. codeauthor:: Asher Bender <a.bender.dev@gmail.com>
 
 """
 import numpy as np
+import scipy.stats
 
 
 class BayesianLinearRegression(object):
@@ -28,14 +31,14 @@ class BayesianLinearRegression(object):
 
         # Check that the location parameter is an array.
         self.__mu_N = location
-        if location:
+        if location is not None:
             if not isinstance(location, np.ndarray) and location.ndim != 2:
                 msg = 'The location parameter must be a 2D-numpy array.'
                 raise Exception(msg)
 
         # Check that the dispersion parameter is an array.
         self.__S_N = dispersion
-        if dispersion:
+        if location is not None:
             if not isinstance(dispersion, np.ndarray) and dispersion.ndim != 2:
                 msg = 'The dispersion parameter must be a 2D-numpy array.'
                 raise Exception(msg)
@@ -92,12 +95,12 @@ class BayesianLinearRegression(object):
 
         # Check the location parameter has the same dimensional as the input
         # data (after basis function expansion).
-        elif self.__mu_N.shape[1] != self.__D:
-            msg = 'The location parameter is a ({0[0]} x {0[0]}) matrix. The '
+        elif self.__mu_N.shape[0] != self.__D:
+            msg = 'The location parameter is a ({0[0]} x {0[1]}) matrix. The '
             msg += 'design matrix (input data after basis function expansion) '
             msg += 'is {1}-dimensional. The location parameter must be a '
             msg += '({1} x 1) matrix.'
-            raise Exception(msg % (self.__mu_N.shape, self.__D))
+            raise Exception(msg.format(self.__mu_N.shape, self.__D))
 
         # If the dispersion parameter has not been set, use an uninformative
         # value.
@@ -118,10 +121,20 @@ class BayesianLinearRegression(object):
         # checking the sufficient statistics again.
         self.__initialised = True
 
-    def update(self, X, Y):
-        """Update sufficient statistics of the model distribution.
+    def __design_matrix(self, X):
+        """Create design matrix."""
 
-        """
+        # Perform basis function expansion.
+        try:
+            return self.__basis(X)
+        except Exception as e:
+            msg = 'Could not perform basis function expansion with the '
+            msg += 'function %s\n\n' % str(self.__basis)
+            msg += 'Error thrown:\n %s' % str(e)
+            raise Exception(msg)
+
+    def update(self, X, Y):
+        """Update sufficient statistics of the model distribution."""
 
         # Ensure inputs are valid objects and the same length.
         if (not isinstance(X, np.ndarray) or not isinstance(Y, np.ndarray) or
@@ -130,13 +143,7 @@ class BayesianLinearRegression(object):
             raise Exception(msg)
 
         # Perform basis function expansion.
-        try:
-            phi = self.__basis(X)
-        except Exception as e:
-            msg = 'Could not perform basis function expansion with the '
-            msg += 'function %s\n\n' % str(self.__basis)
-            msg += 'Error thrown:\n %s' % str(e)
-            raise Exception(msg)
+        phi = self.__design_matrix(X)
 
         # Check sufficient statistics are valid (only once).
         if not self.__initialised:
@@ -152,10 +159,12 @@ class BayesianLinearRegression(object):
         mu_0 = self.__mu_N
         S_0 = self.__S_N
 
-        # Update Precision (Eq 7.71).
+        # Update Precision.
+        #     Eq 7.71 ref [1] - modified for precision
         self.__S_N = S_N = S_0 + np.dot(phi.T, phi)
 
-        # Update mean using cholesky decomposition (Eq 7.70).
+        # Update mean using cholesky decomposition.
+        #     Eq 7.70 ref[1] - modified for precision
         #
         # For:
         #     Ax = b
@@ -168,16 +177,65 @@ class BayesianLinearRegression(object):
         L = np.linalg.cholesky(S_N)
         self.__mu_N = mu_N = np.linalg.solve(L.T, np.linalg.solve(L, b))
 
-        # Update shape parameter (Eq 7.72).
+        # Update shape parameter.
+        #     Eq 7.72 ref [1]
         self.__alpha_N += len(X)/2.0
 
-        # Update rate parameter (Eq 7.73).
-        self.__beta_N += 0.5 * (reduce(np.dot, [mu_0.T, S_0, mu_0]) +
-                                Y.T.dot(Y) -
-                                reduce(np.dot, [mu_N.T, S_N, mu_N]))
+        # Update rate parameter.
+        #     Eq 7.73 ref [1]
+        # self.__beta_N += float(0.5 * (reduce(np.dot, [mu_0.T, S_0, mu_0]) +
+        #                               Y.T.dot(Y) -
+        #                               reduce(np.dot, [mu_N.T, S_N, mu_N])))
 
-    def predict(self, X):
-        pass
+        self.__beta_N += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
+                                      Y.T.dot(Y) -
+                                      mu_N.T.dot(S_N.dot(mu_N))))
+
+    def predict(self, X, variance=False):
+        """Posterior predictive distribution."""
+
+        # Perform basis function expansion.
+        phi = self.__design_matrix(X)
+
+        # Calculate mean.
+        #     Eq 7.76 ref [1]
+        m_hat = np.dot(phi, self.__mu_N)
+
+        # Calculate mean and variance.
+        #     Eq 7.76 ref [1]
+        if variance:
+            # return (m_hat, np.sqrt(np.diag(S_hat)[:, np.newaxis]))
+
+            # L = np.linalg.cholesky(self.__S_N)
+            # S_hat = np.sqrt(np.sum(np.linalg.solve(L, phi.T )**2, axis=0)  + self.__beta_N/self.__alpha_N).flatten()[:,np.newaxis]
+            # return (m_hat, S_hat)
+
+            # Note that the scaling parameter is not equal to the variance in
+            # the general case. In the limit, as the number of degrees of
+            # freedom reaches infinity, the scale parameter becomes equivalent
+            # to the variance of a Gaussian.
+            uw = np.dot(phi, np.linalg.solve(self.__S_N, phi.T))
+            S_hat = (self.__beta_N/self.__alpha_N) * (np.eye(len(phi)) + uw)
+            S_hat = np.sqrt(np.diag(S_hat))
+
+            # Calculate a one sided 97.5%, t-distribution, confidence
+            # interval. This corresponds to a 95% two-sided confidence
+            # interval.
+            #
+            # For a tabulation of values see:
+            #     http://en.wikipedia.org/wiki/Student%27s_t-distribution#Confidence_intervals
+            #
+            # Note: If the number of degrees of freedom is equal to one, the
+            #       distribution is equivalent to the Cauchy distribution. As
+            #       the number of degrees of freedom approaches infinite, the
+            #       distribution approaches a Gaussian distribution.
+            #
+            ci = scipy.stats.t.ppf(0.975, 2 * self.__alpha_N)
+
+            return (m_hat, ci * S_hat[:, np.newaxis])
+
+        else:
+            return m_hat
 
     def evidence(self):
         pass
