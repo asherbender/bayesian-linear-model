@@ -18,10 +18,11 @@ import scipy.stats
 
 
 class BayesianLinearRegression(object):
+    """Bayesian linear regression."""
 
     def __init__(self, basis=None,
                  location=None, dispersion=None,
-                 shape=0.0, scale=0.0):
+                 shape=None, scale=None):
 
         # Ensure the basis function expansion is a callable function.
         self.__basis = basis
@@ -45,15 +46,17 @@ class BayesianLinearRegression(object):
 
         # Check that the shape parameter is a positive scalar.
         self.__alpha_N = shape
-        if not np.isscalar(shape) or (shape < 0):
-            msg = 'The shape parameter must be a positive scalar.'
-            raise Exception(msg)
+        if shape is not None:
+            if not np.isscalar(shape) or (shape < 0):
+                msg = 'The shape parameter must be a positive scalar.'
+                raise Exception(msg)
 
         # Check that the scale parameter is a positive scalar.
         self.__beta_N = scale
-        if not np.isscalar(scale) or (scale < 0):
-            msg = 'The scale parameter must be a positive scalar.'
-            raise Exception(msg)
+        if scale is not None:
+            if not np.isscalar(scale) or (scale < 0):
+                msg = 'The scale parameter must be a positive scalar.'
+                raise Exception(msg)
 
         # Force object to validate the sufficient statistics after first call
         # to the update() method.
@@ -65,7 +68,7 @@ class BayesianLinearRegression(object):
 
     @property
     def dispersion(self):
-        return self.__S_N
+        return np.linalg.inv(self.__S_N)
 
     @property
     def shape(self):
@@ -75,21 +78,37 @@ class BayesianLinearRegression(object):
     def scale(self):
         return self.__beta_N
 
-    def __initialise(self, D):
-        """Initialise sufficient statistics of the Gaussian.
+    def __initialise(self, D, N):
+        """Initialise sufficient statistics of the distribution.
 
         This method initialises the sufficient statistics of the multivariate
-        normal distribution if they have not been specified. Uninformative
-        values are used. If values have been specified, they are checked to
-        ensure the dimensionality has been specified correctly.
+        normal distribution if they have not been specified. If values have
+        been specified, they are checked to ensure the dimensionality has been
+        specified correctly.
+
+        If values have not been specified, uninformative values are used
+        (Section 7.6.3.2 of [1]):]
+
+            m = zero(D, 1)
+            V = inf * eye(D)
+            alpha = -D/2
+            beta = 0
+
+        the update equations 7.78 - 7.82 can be achieved by setting the prior
+        values in equations 7.70 - 7.73 to:
+
+            m_0 = zero(D, 1)
+            V_0 = zero(D, D)
+            alpha_0 = -D/2
+            beta_0 = 0
 
         """
 
         # Store dimensionality of the data.
-        self.__D = D
+        self.__D = float(D)
 
         # If the location parameter has not been set, use an uninformative
-        # value.
+        # value (Eq 7.78 ref [1]).
         if self.__mu_N is None:
             self.__mu_N = np.zeros((self.__D, 1))
 
@@ -103,9 +122,9 @@ class BayesianLinearRegression(object):
             raise Exception(msg.format(self.__mu_N.shape, self.__D))
 
         # If the dispersion parameter has not been set, use an uninformative
-        # value.
+        # value (Eq 7.79 ref [1]).
         if self.__S_N is None:
-            self.__S_N = np.eye(self.__D)
+            self.__S_N = np.zeros((self.__D, self.__D))
 
         # Check the dispersion parameter has the same dimensional as the input
         # data (after basis function expansion).
@@ -117,12 +136,40 @@ class BayesianLinearRegression(object):
             msg += 'must be a ({1} x {1}) matrix.'
             raise Exception(msg.format(self.__mu_N.shape, self.__D))
 
+        # Use uninformative shape (Eq 7.80 ref [1]).
+        if self.__alpha_N is None:
+            self.__alpha_N = -D / 2.0
+
+        # Check the shape parameter is greater than zero.
+        elif self.__alpha_N < 0:
+            msg = 'The shape parameter must be greater than or equal to zero.'
+            raise Exception(msg)
+
+        # Use uninformative scale (Eq 7.81 and 7.82 ref [1]).
+        if self.__beta_N is None:
+            self.__beta_N = 0
+
+        # Check the rate parameter is greater than zero.
+        elif self.__beta_N < 0:
+            msg = 'The rate parameter must be greater than or equal to zero.'
+            raise Exception(msg)
+
+        # Ensure distribution is defined (i.e. D < N - 1). See:
+        #
+        #     Maruyama, Y. and E. George (2008). A g-prior extension
+        #     for p > n. Technical report, U. Tokyo.
+        #
+        if D >= (N - 1):
+            msg = 'Update is only defined for D < N - 1. Initialise with more '
+            msg += 'than {0:d} observations.'
+            raise Exception(msg.format(D + 1))
+
         # The sufficient statistics have been validated. Prevent object from
         # checking the sufficient statistics again.
         self.__initialised = True
 
     def __design_matrix(self, X):
-        """Create design matrix."""
+        """Perform basis function expansion to create design matrix."""
 
         # Perform basis function expansion.
         try:
@@ -133,38 +180,37 @@ class BayesianLinearRegression(object):
             msg += 'Error thrown:\n %s' % str(e)
             raise Exception(msg)
 
-    def update(self, X, Y):
+    def update(self, X, y):
         """Update sufficient statistics of the model distribution."""
 
         # Ensure inputs are valid objects and the same length.
-        if (not isinstance(X, np.ndarray) or not isinstance(Y, np.ndarray) or
-            (X.ndim != 2) or (Y.ndim != 2) or (len(X) != len(Y))):
-            msg = 'X must be a (N x M) matrix and Y must be a (N x 1) vector.'
+        if (not isinstance(X, np.ndarray) or not isinstance(y, np.ndarray) or
+            (X.ndim != 2) or (y.ndim != 2) or (len(X) != len(y))):
+            msg = 'X must be a (N x M) matrix and y must be a (N x 1) vector.'
             raise Exception(msg)
 
         # Perform basis function expansion.
         phi = self.__design_matrix(X)
+        N, D = phi.shape
 
         # Check sufficient statistics are valid (only once).
         if not self.__initialised:
-            self.__initialise(phi.shape[1])
+            self.__initialise(D, N)
 
         # Check dimensions of input data.
-        if phi.shape[1] != self.__D:
+        if self.__D != D:
             msg = 'The input data, after basis function expansion, is '
             msg += '{0}-dimensional. Expected {1}-dimensional data.'
-            Exception(msg.format(phi.shape[1], self.__D))
+            Exception(msg.format(D, self.__D))
 
-        # Cache sufficient statistics before update.
+        # Store prior parameters.
         mu_0 = self.__mu_N
         S_0 = self.__S_N
 
-        # Update Precision.
-        #     Eq 7.71 ref [1] - modified for precision
+        # Update precision (Eq 7.71 ref [1], modified for precision).
         self.__S_N = S_N = S_0 + np.dot(phi.T, phi)
 
         # Update mean using cholesky decomposition.
-        #     Eq 7.70 ref[1] - modified for precision
         #
         # For:
         #     Ax = b
@@ -173,22 +219,17 @@ class BayesianLinearRegression(object):
         # The solution can be given by:
         #     x = L.T \ (L \ b)
         #
-        b = S_0.dot(mu_0) + phi.T.dot(Y)
-        L = np.linalg.cholesky(S_N)
+        # Update mean (Eq 7.70 ref[1], modified for precision).
+        b = S_0.dot(mu_0) + phi.T.dot(y)
+        L = np.linalg.cholesky(self.__S_N)
         self.__mu_N = mu_N = np.linalg.solve(L.T, np.linalg.solve(L, b))
 
-        # Update shape parameter.
-        #     Eq 7.72 ref [1]
-        self.__alpha_N += len(X)/2.0
+        # Update shape parameter (Eq 7.72 ref [1]).
+        self.__alpha_N += N / 2.0
 
-        # Update rate parameter.
-        #     Eq 7.73 ref [1]
-        # self.__beta_N += float(0.5 * (reduce(np.dot, [mu_0.T, S_0, mu_0]) +
-        #                               Y.T.dot(Y) -
-        #                               reduce(np.dot, [mu_N.T, S_N, mu_N])))
-
+        # Update scale parameter (Eq 7.73 ref [1]).
         self.__beta_N += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
-                                      Y.T.dot(Y) -
+                                      y.T.dot(y) -
                                       mu_N.T.dot(S_N.dot(mu_N))))
 
     def predict(self, X, variance=False):
@@ -204,12 +245,6 @@ class BayesianLinearRegression(object):
         # Calculate mean and variance.
         #     Eq 7.76 ref [1]
         if variance:
-            # return (m_hat, np.sqrt(np.diag(S_hat)[:, np.newaxis]))
-
-            # L = np.linalg.cholesky(self.__S_N)
-            # S_hat = np.sqrt(np.sum(np.linalg.solve(L, phi.T )**2, axis=0)  + self.__beta_N/self.__alpha_N).flatten()[:,np.newaxis]
-            # return (m_hat, S_hat)
-
             # Note that the scaling parameter is not equal to the variance in
             # the general case. In the limit, as the number of degrees of
             # freedom reaches infinity, the scale parameter becomes equivalent
