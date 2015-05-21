@@ -15,6 +15,7 @@ References:
 """
 import numpy as np
 import scipy.stats
+from numpy.core.umath_tests import inner1d
 
 
 class BayesianLinearRegression(object):
@@ -274,3 +275,40 @@ class BayesianLinearRegression(object):
 
     def evidence(self):
         pass
+
+    def random(self, samples=1):
+        """Draw a random model from the posterior distribution."""
+
+        # The posterior over the model weights is a Student-T distribution. To
+        # generate random models, sample from the posterior marginals.
+        #
+        #     Eq 7.75 ref [1]
+
+        # Note: Currently the 'scipy.stats.multivariate_normal' object does not
+        #       permit (MxMxN) covariance matrices. As a result multiple
+        #       observations can only be drawn from ONE multivariate
+        #       normal. The code in this method uses broadcasting to vectorise
+        #       sampling from multiple, multivariate normals.
+
+        # Draw random samples from the inverse gamma distribution (1x1xN).
+        r = scipy.stats.invgamma.rvs(self.__alpha_N,
+                                     scale=self.__beta_N,
+                                     size=samples).reshape((1, 1, samples))
+
+        # Create multiple multivariate scale matrices from random gamma samples
+        # (DxDxN).
+        sigma = np.linalg.inv(self.__S_N)
+        sigma = r * np.repeat(sigma[:, :, np.newaxis], samples, axis=2)
+
+        # Draw random samples from the standard univariate normal distribution
+        # (1xDxN).
+        rn = np.random.normal(size=(1, self.__D, samples))
+
+        # Create N random samples (1xD) drawn from multiple, random and unique
+        # multivariate normal distributions.
+        L = np.rollaxis(np.linalg.cholesky(sigma.T).T, 0, 2)
+        sigma = inner1d(np.rollaxis(rn, 0, 2).T, L.T)
+
+        # Return samples drawn from multivariate-normal, inverse-gamma
+        # distribution.
+        return self.__mu_N.T + sigma
