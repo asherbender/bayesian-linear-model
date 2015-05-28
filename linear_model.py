@@ -9,12 +9,17 @@ References:
        (Information Science and Statistics), Jordan, M.; Kleinberg,
        J. & Scholkopf, B. (Eds.), Springer, 2006
 
+   [3] Murphy, K. P., Conjugate Bayesian analysis of the Gaussian
+       distribution Department of Computer Science, The University
+       of British Columbia, 2007
+
 .. sectionauthor:: Asher Bender <a.bender.dev@gmail.com>
 .. codeauthor:: Asher Bender <a.bender.dev@gmail.com>
 
 """
 import numpy as np
 import scipy.stats
+from scipy.special import gammaln
 from numpy.core.umath_tests import inner1d
 
 
@@ -31,6 +36,9 @@ class BayesianLinearRegression(object):
             msg = "The input 'basis' must be a callable function."
             raise Exception(msg)
 
+        # Number of observations.
+        self.__N = 0
+
         # Check that the location parameter is an array.
         self.__mu_N = location
         if location is not None:
@@ -39,6 +47,7 @@ class BayesianLinearRegression(object):
                 raise Exception(msg)
 
         # Check that the dispersion parameter is an array.
+        self.__S_0 = dispersion
         self.__S_N = dispersion
         if location is not None:
             if not isinstance(dispersion, np.ndarray) and dispersion.ndim != 2:
@@ -46,6 +55,7 @@ class BayesianLinearRegression(object):
                 raise Exception(msg)
 
         # Check that the shape parameter is a positive scalar.
+        self.__alpha_0 = shape
         self.__alpha_N = shape
         if shape is not None:
             if not np.isscalar(shape) or (shape < 0):
@@ -53,6 +63,7 @@ class BayesianLinearRegression(object):
                 raise Exception(msg)
 
         # Check that the scale parameter is a positive scalar.
+        self.__beta_0 = scale
         self.__beta_N = scale
         if scale is not None:
             if not np.isscalar(scale) or (scale < 0):
@@ -137,6 +148,11 @@ class BayesianLinearRegression(object):
             msg += 'must be a ({1} x {1}) matrix.'
             raise Exception(msg.format(self.__mu_N.shape, self.__D))
 
+        # Convert covariance into precision.
+        else:
+            self.__S_0 = np.linalg.inv(self.__S_0)
+            self.__S_N = np.linalg.inv(self.__S_N)
+
         # Use uninformative shape (Eq 7.80 ref [1]).
         if self.__alpha_N is None:
             self.__alpha_N = -D / 2.0
@@ -193,6 +209,7 @@ class BayesianLinearRegression(object):
         # Perform basis function expansion.
         phi = self.__design_matrix(X)
         N, D = phi.shape
+        self.__N += N
 
         # Check sufficient statistics are valid (only once).
         if not self.__initialised:
@@ -274,7 +291,78 @@ class BayesianLinearRegression(object):
             return m_hat
 
     def evidence(self):
-        pass
+        """Return log marginal likelihood of the data (model likelihood)."""
+
+        #     Eq 3.118 ref [2]
+        #     Eq  203  ref [3]
+
+        # The likelihood can be broken into simpler components:
+        #
+        #     pdf = A * B * C * D
+        #
+        # where:
+        #
+        #     A = 1 / (2 * pi)^(N/2)
+        #     B = (b_0 ^ a_0) / (b_N ^ a_N)
+        #     C = gamma(a_N) / gamma(a_0)
+        #     D = det(S_N)^(1/2) / det(S_0)^(1/2)
+        #
+        # Using log probabilities:
+        #
+        #     pdf = A + B + C + D
+        #
+        # where:
+        #
+        #     log(A) = -0.5 * N * ln(2 * pi)
+        #     lob(B) = a_0 * ln(b_0) - a_N * ln(b_N)
+        #     log(C) = gammaln(a_N) - gammaln(a_0)
+        #     log(D) = ln(det(S_N)^0.5) - ln(det(S_0)^0.5)
+        #
+
+        # Ensure the model has been updated with data.
+        if not self.__initialised:
+            msg = 'The model must be initialised with data before the '
+            msg += 'marginal likelihood can be calculated.'
+            raise Exception(msg)
+
+        # Create local copy of sufficient statistics for legibility.
+        D = self.__D
+        S_0 = self.__S_0
+        a_0 = self.__alpha_0
+        b_0 = self.__beta_0
+        S_N = np.linalg.inv(self.__S_N)
+        a_N = self.__alpha_N
+        b_N = self.__beta_N
+
+        A = -0.5 * D * np.log(2 * np.pi)
+
+        # Prior value specified.
+        if b_0 is not None:
+            B = a_0 * np.log(b_0) - a_N * np.log(b_N)
+
+        # Approximate uninformative prior.
+        else:
+            B = -a_N * np.log(b_N)
+
+        # Prior value specified.
+        if a_0 is not None:
+            C = gammaln(a_N) - gammaln(a_0)
+
+        # Approximate uninformative prior.
+        else:
+            C = gammaln(a_N)
+
+        # Prior value specified.
+        if S_0 is not None:
+            S_0 = np.linalg.inv(S_0)
+            D = 0.5 * np.log(np.linalg.det(S_N)) - \
+                0.5 * np.log(np.linalg.det(S_0))
+
+        # Approximate uninformative prior.
+        else:
+            D = 0.5 * np.log(np.linalg.det(S_N))
+
+        return A + B + C + D
 
     def random(self, samples=1):
         """Draw a random model from the posterior distribution."""
