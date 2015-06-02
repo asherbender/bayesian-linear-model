@@ -1,20 +1,16 @@
-"""Bayesian Linear Model.
-
-References:
-
-   [1] Murphy, K. P., Machine learning: A probabilistic perspective,
-       The MIT Press, 2012
-
-   [2] Bishop, C. M, Pattern Recognition and Machine Learning
-       (Information Science and Statistics), Jordan, M.; Kleinberg,
-       J. & Scholkopf, B. (Eds.), Springer, 2006
-
-   [3] Murphy, K. P., Conjugate Bayesian analysis of the Gaussian
-       distribution Department of Computer Science, The University
-       of British Columbia, 2007
-
+"""
 .. sectionauthor:: Asher Bender <a.bender.dev@gmail.com>
 .. codeauthor:: Asher Bender <a.bender.dev@gmail.com>
+
+.. |bool| replace:: :class:`.bool`
+.. |callable| replace:: :func:`.callable`
+.. |False| replace:: :data:`.False`
+.. |float| replace:: :class:`.float`
+.. |int| replace:: :class:`.int`
+.. |ndarray| replace:: :class:`~numpy.ndarray`
+.. |None| replace:: :data:`.None`
+.. |True| replace:: :data:`.True`
+.. |tuple| replace:: :func:`.tuple`
 
 """
 import numpy as np
@@ -23,12 +19,39 @@ from scipy.special import gammaln
 from numpy.core.umath_tests import inner1d
 
 
-class BayesianLinearRegression(object):
-    """Bayesian linear regression."""
+class BayesianLinearModel(object):
+    r"""Bayesian linear model.
 
-    def __init__(self, basis=None,
-                 location=None, dispersion=None,
-                 shape=None, scale=None):
+    Instantiate a Bayesian linear model. If no sufficient statistics are
+    supplied at initialisation, the following uninformative semi-conjugate
+    prior will be used:
+
+    .. math::
+
+          \mathbf{w}_0 &= \mathbf{0}        \\
+          \mathbf{V_0} &= \infty\mathbf{I}  \\
+          a_0          &= \frac{-D}{2}      \\
+          b_0          &= 0                 \\
+
+    Args:
+      basis (|callable|): Function for performing basis function expansion on
+        the input data.
+      location (|ndarray|, *optional*): Prior mean (:math:`\mathbf{w}_0`) of
+        the normal distribution.
+      dispersion (|ndarray|, *optional*): Prior dispersion
+        (:math:`\mathbf{V}_0`) of the normal distribution.
+      shape (|float|, *optional*): Prior shape parameter (:math:`a_0`) of the
+        inverse Gamma distribution.
+      rate (|float|, *optional*): Prior rate parameter (:math:`b_0`) of the
+        inverse Gamma distribution.
+
+    Raises:
+      ~exceptions.Exception: If any of the input parameters are invalid.
+
+    """
+
+    def __init__(self, basis, location=None, dispersion=None, shape=None,
+                 scale=None):
 
         # Ensure the basis function expansion is a callable function.
         self.__basis = basis
@@ -198,7 +221,29 @@ class BayesianLinearRegression(object):
             raise Exception(msg)
 
     def update(self, X, y):
-        """Update sufficient statistics of the model distribution."""
+        r"""Update sufficient statistics of the Normal-inverse-gamma distribution.
+
+        .. math::
+
+            \mathbf{w}_N &= \mathbf{V_N}\left(\mathbf{V_0}^{-1}\mathbf{w}_0 +
+                                              \Phi^T\mathbf{y}\right)        \\
+            \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \Phi^T\Phi\right)^{-1} \\
+            a_N          &= a_0 + \frac{n}{2}                                \\
+            b_N          &= b_0 + \frac{k}{2}
+                            \left(\mathbf{w}_0^T\mathbf{V}_0^{-1}\mathbf{w}_0 +
+                                  \mathbf{y}^T\mathbf{y} -
+                                  \mathbf{w}_N^T\mathbf{V}_N^{-1}\mathbf{w}_N
+                            \right)
+
+        Args:
+          X (|ndarray|): (N x M) model inputs.
+          y (|ndarray|): (N x 1) target outputs.
+
+        Raises:
+          ~exceptions.Exception: If there are not enough inputs or the
+            dimensionality of the data is wrong.
+
+        """
 
         # Ensure inputs are valid objects and the same length.
         if (not isinstance(X, np.ndarray) or not isinstance(y, np.ndarray) or
@@ -251,7 +296,37 @@ class BayesianLinearRegression(object):
                                       mu_N.T.dot(S_N.dot(mu_N))))
 
     def predict(self, X, variance=False):
-        """Posterior predictive distribution."""
+        r"""Calculate posterior predictive values.
+
+        Given a new set of test inputs, :math:`\tilde{\mathbf{X}}`, predict the
+        output value. The predictions are T-distributed according to:
+
+        .. math::
+
+            p\left(\tilde{\mathbf{y}} \vert
+                          \tilde{\mathbf{X}}, \mathcal{D} \right) =
+            \mathcal{T}\left(\tilde{\mathbf{y}} \; \big\vert \;
+                             \tilde{\mathbf{\Phi}}\mathbf{w}_N,
+                             \frac{b_N}{a_N}
+                             \left(\mathbf{I} +
+                                   \tilde{\mathbf{\Phi}}\mathbf{V}_N\tilde{\mathbf{\Phi}}^T
+                             \right),
+                             2a_N
+                       \right)
+
+        Args:
+          X (|ndarray|): (N x M) input query locations
+            (:math:`\tilde{\mathbf{X}}`) to perform prediction.
+          variance (|bool|, *optional*): set to |True| to return the 95%
+            confidence intervals. Default is set to |False|.
+
+        Returns:
+          |ndarray| or |tuple|: If ``variance`` is set to |False| only the
+            predicted values are returned as a (N x 1) array. If ``variance``
+            is set to |True| a tuple is returned containing both the predicted
+            values (N x 1) and the 95% confidence intervals (N x 1).
+
+        """
 
         # Perform basis function expansion.
         phi = self.__design_matrix(X)
@@ -291,7 +366,52 @@ class BayesianLinearRegression(object):
             return m_hat
 
     def evidence(self):
-        """Return log marginal likelihood of the data (model likelihood)."""
+        r"""Return log marginal likelihood of the data (model evidence).
+
+        The log marginal likelihood is calculated by taking the log of the
+        following equation:
+
+        .. math::
+
+            \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
+
+            p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
+                                         \frac{\det{V_N}^\frac{1}{2}}
+                                              {\det{V_0}^\frac{1}{2}}
+                                         \frac{b_0^{a_0}}
+                                              {b_N^{a_N}}
+                                         \frac{\Gamma\left(a_N\right)}
+                                              {\Gamma\left(a_0\right)}
+
+        Note that the default prior is an improper, uninformative prior. The
+        marginal likelihood equation, specified above, equation is undefined
+        for improper priors. To approximate the marginal likelihood in this
+        situation, the prior sufficient statistics :math:`\left(V_0, a_0,
+        b_0\right)` are selectively ignored if they are unset. If all prior
+        sufficient statistics are unset (default) the marginal likelihood
+        equation is approximated as:
+
+        .. math::
+
+            \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
+
+            p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
+                                         \det{V_N}^\frac{1}{2}
+                                         \frac{1}
+                                              {b_N^{a_N}}
+                                         \Gamma\left(a_N\right)
+
+        Although this equation returns an approximate marginal likelihood, it
+        can still be used for model selection. The omitted terms, which cannot
+        be evaluated, create a constant which scales the final result. During
+        model selection this constant will be identical across all models and
+        can safely be ignored.
+
+        Returns:
+          |float|: The log marginal likelihood is returned. If the object has
+            not been initialised with data, |None| is returned.
+
+        """
 
         #     Eq 3.118 ref [2]
         #     Eq  203  ref [3]
@@ -321,12 +441,10 @@ class BayesianLinearRegression(object):
 
         # Ensure the model has been updated with data.
         if not self.__initialised:
-            msg = 'The model must be initialised with data before the '
-            msg += 'marginal likelihood can be calculated.'
-            raise Exception(msg)
+            return None
 
         # Create local copy of sufficient statistics for legibility.
-        D = self.__D
+        N = self.__N
         S_0 = self.__S_0
         a_0 = self.__alpha_0
         b_0 = self.__beta_0
@@ -334,7 +452,7 @@ class BayesianLinearRegression(object):
         a_N = self.__alpha_N
         b_N = self.__beta_N
 
-        A = -0.5 * D * np.log(2 * np.pi)
+        A = -0.5 * N * np.log(2 * np.pi)
 
         # Prior value specified.
         if b_0 is not None:
@@ -365,7 +483,28 @@ class BayesianLinearRegression(object):
         return A + B + C + D
 
     def random(self, samples=1):
-        """Draw a random model from the posterior distribution."""
+        r"""Draw a random model from the posterior distribution.
+
+        The model parameters are T-distributed according to the following
+        posterior marginal:
+
+        .. math::
+
+            p\left(\mathbf{w} \vert \mathcal{D} \right) =
+            \mathcal{T}\left(
+                           \mathbf{w}_N, \frac{b_N}{a_N}\mathbf{V}_N, 2a_N
+                       \right)
+
+        Args:
+          samples (|int|, *optional*): number of random samples to return.
+
+        Returns:
+          |ndarray|: Return (NxD) random samples from the model weights
+            posterior. Each row is a D-dimensional vector of random model
+            weights.
+
+
+        """
 
         # The posterior over the model weights is a Student-T distribution. To
         # generate random models, sample from the posterior marginals.
@@ -397,6 +536,6 @@ class BayesianLinearRegression(object):
         L = np.rollaxis(np.linalg.cholesky(sigma.T).T, 0, 2)
         sigma = inner1d(np.rollaxis(rn, 0, 2).T, L.T)
 
-        # Return samples drawn from multivariate-normal, inverse-gamma
+        # Return (NxD) samples drawn from multivariate-normal, inverse-gamma
         # distribution.
         return self.__mu_N.T + sigma

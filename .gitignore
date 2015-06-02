@@ -1,3 +1,6 @@
 # Ignore python byte code.
 *.pyc
 *~
+
+# Do not version intermediary documentation files.
+doc/build/
