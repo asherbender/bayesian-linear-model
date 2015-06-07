@@ -4,3 +4,6 @@
 
 # Do not version intermediary documentation files.
 doc/build/
+
+# Ignore ipython notebook temp files.
+example/.ipynb_checkpoints

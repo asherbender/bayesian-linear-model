@@ -99,9 +99,13 @@ To uninstall the package:
 Example
 --------------------------------------------------------------------------------
 
+For a tutorial on the Bayesian linear model refer to the IPython Notebook
+provided in ``example/Bayesian Linear Regression.ipynb``.
+
 The following code is a short demonstration of how to use the
-``BayesianLinearModel()`` class for model selection and inference. This code was
-used to produce the `example figure
+``BayesianLinearModel()`` class for model selection and inference. A copy of
+this code is included in ``example/example.py``. This code was used to produce
+the `example figure
 <https://github.com/asherbender/bayesian-linear-model#overview>`_:
 
 .. code-block:: python
@@ -157,8 +161,6 @@ used to produce the `example figure
     ax2.set_ylabel('output domain f(x)')
     ax2.grid('on')
     plt.show()
-
-A copy of this code is included in ``example/example.py``.
 
 References
 --------------------------------------------------------------------------------
