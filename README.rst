@@ -39,8 +39,9 @@ balance between data-fit and model complexity, leading to better generalisation.
 
 The bottom subplot shows the noisy sine data (black dots) and predictions from
 the model (solid red line), including a 95% confidence bound (dashed red
-line). The model used in the bottom plot is the model recommended in the top
-plot.
+line). The background intensity plot illustrates the posterior likelihood of
+data in the model. The model used in the bottom plot is the model recommended in
+the top plot.
 
 The code used to produce this figure is provided in the `Example
 <https://github.com/asherbender/bayesian-linear-model#example>`_ section.
@@ -111,6 +112,7 @@ the `example figure
 .. code-block:: python
 
     import numpy as np
+    from matplotlib import cm
     import matplotlib.pyplot as plt
     from linear_model import BayesianLinearModel
     from sklearn.preprocessing import PolynomialFeatures
@@ -119,15 +121,18 @@ the `example figure
     # Create polynomial features in basis function expansion.
     polybasis = lambda x, p: PolynomialFeatures(p).fit_transform(x)
 
+    # Create sine function.
+    func = lambda x: np.sin(((2*np.pi)/10)*x)
+
     # Create random sin() data.
-    N = 50
+    N = 75
     noise = 0.25
-    X = np.sort(np.random.uniform(0, 2*np.pi, N)).reshape((N, 1))
-    y = np.sin(X) + np.random.normal(scale=noise, size=(N, 1))
+    X = np.sort(np.random.uniform(0, 10, N)).reshape((N, 1))
+    y = func(X) + np.random.normal(scale=noise, size=(N, 1))
 
     # Calculate log marginal likelihood (model evidence) for each model.
     lml = list()
-    for d in range(10):
+    for d in range(13):
         blm = BayesianLinearModel(basis=lambda x: polybasis(x, d))
         blm.update(X, y)
         lml.append(blm.evidence())
@@ -138,8 +143,9 @@ the `example figure
     blm.update(X, y)
 
     # Perform inference in the model.
-    x_query = np.linspace(0, 2*np.pi, 1000)[:, None]
-    mu, S2 = blm.predict(x_query, variance=True)
+    x_query = np.linspace(0, 10, 1000)[:, None]
+    y_query = np.linspace(-2, 2, 500)
+    mu, S2, l = blm.predict(x_query, y=y_query, variance=True)
 
     # Plot model selection.
     f, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
@@ -152,13 +158,15 @@ the `example figure
     ax1.grid('on')
 
     # Plot model predictions.
-    ax2.plot(X, y, 'k.')
-    ax2.plot(x_query, mu + S2, 'r--', linewidth=2)
+    ext = [0, 10, -2., 2.]
+    ax2.imshow(l, origin='lower', extent=ext, cmap=cm.bone_r, alpha=0.5)
+    ax2.plot(x_query, mu + S2, 'r--', linewidth=1)
     ax2.plot(x_query, mu, 'r', linewidth=3)
-    ax2.plot(x_query, mu - S2, 'r--', linewidth=2)
+    ax2.plot(x_query, mu - S2, 'r--', linewidth=1)
+    ax2.plot(X, y, 'k.', markersize=10)
     ax2.set_title('Prediction')
-    ax2.set_xlabel('input domain (x)')
-    ax2.set_ylabel('output domain f(x)')
+    ax2.set_xlabel('input domain, x')
+    ax2.set_ylabel('output domain, f(x)')
     ax2.grid('on')
     plt.show()
 
