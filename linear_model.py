@@ -310,7 +310,7 @@ class BayesianLinearModel(object):
                                       y.T.dot(y) -
                                       mu_N.T.dot(S_N.dot(mu_N))))
 
-    def predict(self, X, variance=False):
+    def predict(self, X, y=None, variance=False):
         r"""Calculate posterior predictive values.
 
         Given a new set of test inputs, :math:`\tilde{\mathbf{X}}`, predict the
@@ -329,17 +329,30 @@ class BayesianLinearModel(object):
                              2a_N
                        \right)
 
+        The data likelihood can also be requested by specifying both a set of
+        test inputs, :math:`\tilde{\mathbf{X}}` and a set of test output,
+        :math:`\tilde{\mathbf{y}}`, locations.
+
         Args:
           X (|ndarray|): (N x M) input query locations
             (:math:`\tilde{\mathbf{X}}`) to perform prediction.
+          y (|ndarray|, *optional*): (K x 1) output query locations
+            (:math:`\tilde{\mathbf{y}}`) to request data likelihood.
           variance (|bool|, *optional*): set to |True| to return the 95%
             confidence intervals. Default is set to |False|.
 
         Returns:
-          |ndarray| or |tuple|: If ``variance`` is set to |False| only the
-            predicted values are returned as a (N x 1) array. If ``variance``
-            is set to |True| a tuple is returned containing both the predicted
-            values (N x 1) and the 95% confidence intervals (N x 1).
+          |ndarray| or |tuple|:
+            * |ndarray|: By default only the predicted means are returned as a
+              (N x 1) array.
+            * (|ndarray|, |ndarray|): If ``variance`` is set to |True| a tuple
+              is returned containing both the predicted means (N x 1) and the
+              95% confidence intervals (N x 1).
+            * (|ndarray|, |ndarray|, |ndarray|): If ``y`` is set, the value of
+              ``variance`` is ignored and the predicted means and 95%
+              confidence intervals are returned. The final returned value is a
+              (K x N) matrix of likelihood values where each row represents an
+              element in ``y`` and each column represents a row in ``X``.
 
         """
 
@@ -350,9 +363,9 @@ class BayesianLinearModel(object):
         #     Eq 7.76 ref [1]
         m_hat = np.dot(phi, self.__mu_N)
 
-        # Calculate mean and variance.
+        # Calculate variance.
         #     Eq 7.76 ref [1]
-        if variance:
+        if (y is not None) or variance:
             # Note that the scaling parameter is not equal to the variance in
             # the general case. In the limit, as the number of degrees of
             # freedom reaches infinity, the scale parameter becomes equivalent
@@ -375,7 +388,20 @@ class BayesianLinearModel(object):
             #
             ci = scipy.stats.t.ppf(0.975, 2 * self.__alpha_N)
 
-            return (m_hat, ci * S_hat[:, np.newaxis])
+            # Return mean and 95% confidence interval.
+            if y is None:
+                return (m_hat, ci * S_hat[:, np.newaxis])
+
+            # Return mean, 95% confidence interval and likelihood.
+            else:
+                N = phi.shape[0]
+                M = y.size
+                l = scipy.stats.t.pdf(y.reshape((M, 1)),
+                                      df=2 * self.__alpha_N,
+                                      loc=m_hat.reshape((1, N)),
+                                      scale=S_hat.reshape((1, N)))
+
+                return (m_hat, ci * S_hat[:, np.newaxis], l)
 
         else:
             return m_hat
