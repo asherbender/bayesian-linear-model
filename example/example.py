@@ -32,7 +32,7 @@ blm.update(X, y)
 # Perform inference in the model.
 x_query = np.linspace(0, 10, 1000)[:, None]
 y_query = np.linspace(-2, 2, 500)
-mu, S2, l = blm.predict(x_query, y=y_query, variance=True)
+mu, S2, lik = blm.predict(x_query, y=y_query, variance=True)
 
 # Plot model selection.
 f, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
@@ -46,7 +46,7 @@ ax1.grid('on')
 
 # Plot model predictions.
 ext = [0, 10, -2., 2.]
-ax2.imshow(l, origin='lower', extent=ext, cmap=cm.bone_r, alpha=0.5)
+ax2.imshow(lik, origin='lower', extent=ext, cmap=cm.bone_r, alpha=0.5)
 ax2.plot(x_query, mu + S2, 'r--', linewidth=1)
 ax2.plot(x_query, mu, 'r', linewidth=3)
 ax2.plot(x_query, mu - S2, 'r--', linewidth=1)

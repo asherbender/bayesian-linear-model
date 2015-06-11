@@ -350,8 +350,11 @@ class BayesianLinearModel(object):
               95% confidence intervals (N x 1).
             * (|ndarray|, |ndarray|, |ndarray|): If ``y`` is set, the value of
               ``variance`` is ignored and the predicted means and 95%
-              confidence intervals are returned. The final returned value is a
-              (K x N) matrix of likelihood values where each row represents an
+              confidence intervals are returned. The final returned value is
+              either a (N x 1) array or (K x N) matrix of likelihood values. If
+              ``X`` and ``y`` are the same length (N = K), the result is
+              returned as an array. If ``X`` and ``y`` are NOT the same length
+              (N != K), a matrix is returned where each row represents an
               element in ``y`` and each column represents a row in ``X``.
 
         """
@@ -395,11 +398,21 @@ class BayesianLinearModel(object):
             # Return mean, 95% confidence interval and likelihood.
             else:
                 N = phi.shape[0]
-                M = y.size
-                l = scipy.stats.t.pdf(y.reshape((M, 1)),
-                                      df=2 * self.__alpha_N,
-                                      loc=m_hat.reshape((1, N)),
-                                      scale=S_hat.reshape((1, N)))
+                K = y.size
+
+                # Return array.
+                if N == K:
+                    l = scipy.stats.t.pdf(y.squeeze(),
+                                          df=2 * self.__alpha_N,
+                                          loc=m_hat.squeeze(),
+                                          scale=S_hat.squeeze())
+
+                # Return matrix result.
+                else:
+                    l = scipy.stats.t.pdf(y.reshape((K, 1)),
+                                          df=2 * self.__alpha_N,
+                                          loc=m_hat.reshape((1, N)),
+                                          scale=S_hat.reshape((1, N)))
 
                 return (m_hat, ci * S_hat[:, np.newaxis], l)
 

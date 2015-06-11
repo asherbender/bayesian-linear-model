@@ -39,7 +39,7 @@ balance between data-fit and model complexity, leading to better generalisation.
 
 The bottom subplot shows the noisy sine data (black dots) and predictions from
 the model (solid red line), including a 95% confidence bound (dashed red
-line). The background intensity plot illustrates the posterior likelihood of
+lines). The background intensity plot illustrates the posterior likelihood of
 data in the model. The model used in the bottom plot is the model recommended in
 the top plot.
 
@@ -145,7 +145,7 @@ the `example figure
     # Perform inference in the model.
     x_query = np.linspace(0, 10, 1000)[:, None]
     y_query = np.linspace(-2, 2, 500)
-    mu, S2, l = blm.predict(x_query, y=y_query, variance=True)
+    mu, S2, lik = blm.predict(x_query, y=y_query, variance=True)
 
     # Plot model selection.
     f, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
@@ -159,7 +159,7 @@ the `example figure
 
     # Plot model predictions.
     ext = [0, 10, -2., 2.]
-    ax2.imshow(l, origin='lower', extent=ext, cmap=cm.bone_r, alpha=0.5)
+    ax2.imshow(lik, origin='lower', extent=ext, cmap=cm.bone_r, alpha=0.5)
     ax2.plot(x_query, mu + S2, 'r--', linewidth=1)
     ax2.plot(x_query, mu, 'r', linewidth=3)
     ax2.plot(x_query, mu - S2, 'r--', linewidth=1)
@@ -169,6 +169,7 @@ the `example figure
     ax2.set_ylabel('output domain, f(x)')
     ax2.grid('on')
     plt.show()
+
 
 References
 --------------------------------------------------------------------------------
