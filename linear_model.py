@@ -57,7 +57,7 @@ class BayesianLinearModel(object):
         (:math:`\mathbf{V}_0`) of the normal distribution.
       shape (|float|, *optional*): Prior shape parameter (:math:`a_0`) of the
         inverse Gamma distribution.
-      rate (|float|, *optional*): Prior rate parameter (:math:`b_0`) of the
+      scale (|float|, *optional*): Prior scale parameter (:math:`b_0`) of the
         inverse Gamma distribution.
 
     Raises:
@@ -204,9 +204,9 @@ class BayesianLinearModel(object):
         if self.__beta_N is None:
             self.__beta_N = 0
 
-        # Check the rate parameter is greater than zero.
+        # Check the scale parameter is greater than zero.
         elif self.__beta_N < 0:
-            msg = 'The rate parameter must be greater than or equal to zero.'
+            msg = 'The scale parameter must be greater than or equal to zero.'
             raise Exception(msg)
 
         # Ensure distribution is defined (i.e. D < N - 1). See:
