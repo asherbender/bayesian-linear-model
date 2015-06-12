@@ -179,12 +179,12 @@ class BayesianLinearModel(object):
         # Check the dispersion parameter has the same dimensional as the input
         # data (after basis function expansion).
         elif ((self.__S_N.shape[0] != self.__D) and
-              (self.__S_N.shape[0] != self.__D)):
-            msg = 'The dispersion parameter is a ({0[0]} x {0[0]}) matrix. '
+              (self.__S_N.shape[1] != self.__D)):
+            msg = 'The dispersion parameter is a ({0[0]} x {0[1]}) matrix. '
             msg += 'The design matrix (input data after basis function '
             msg += 'expansion) is {1}-dimensional. The dispersion parameter '
             msg += 'must be a ({1} x {1}) matrix.'
-            raise Exception(msg.format(self.__mu_N.shape, self.__D))
+            raise Exception(msg.format(self.__S_N.shape, int(self.__D)))
 
         # Convert covariance into precision.
         else:
