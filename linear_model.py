@@ -48,25 +48,42 @@ class BayesianLinearModel(object):
           a_0          &= \frac{-D}{2}      \\
           b_0          &= 0                 \\
 
+    The sufficient statistics will be initialised during the first call to
+    :py:meth:`.update` where the dimensionality of the problem can be inferred
+    from the data.
+
+    If the dimensionality of the problem ``D``, ``location`` or ``dispersion``
+    are specified, initialisation will occur immediately. Uninformative values
+    will be used for any unspecified parameters. Initialising the sufficient
+    statistics immediately has the minor advantage of performing error checking
+    before the first call to :py:meth:`.update`.
+
     Args:
       basis (|callable|): Function for performing basis function expansion on
         the input data.
+      D (|int|, *optional*): Dimensionality of problem, after basis function
+        expansion. If this value is supplied, it will be used for error
+        checking when the sufficient statistics are initialised. If it is not
+        supplied, the dimensionality of the problem will be inferred from
+        either ``location``, ``dispersion`` or the first call to
+        :py:meth:`.update`.
       location (|ndarray|, *optional*): Prior mean (:math:`\mathbf{w}_0`) of
-        the normal distribution.
+        the normal distribution. Set to |None| to use uninformative value.
       dispersion (|ndarray|, *optional*): Prior dispersion
-        (:math:`\mathbf{V}_0`) of the normal distribution.
+        (:math:`\mathbf{V}_0`) of the normal distribution. Set to |None| to use
+        uninformative value.
       shape (|float|, *optional*): Prior shape parameter (:math:`a_0`) of the
-        inverse Gamma distribution.
+        inverse Gamma distribution. Set to |None| to use uninformative value.
       scale (|float|, *optional*): Prior scale parameter (:math:`b_0`) of the
-        inverse Gamma distribution.
+        inverse Gamma distribution. Set to |None| to use uninformative value.
 
     Raises:
       ~exceptions.Exception: If any of the input parameters are invalid.
 
     """
 
-    def __init__(self, basis, location=None, dispersion=None, shape=None,
-                 scale=None):
+    def __init__(self, basis, D=None, location=None, dispersion=None,
+                 shape=None, scale=None):
 
         # Ensure the basis function expansion is a callable function.
         self.__basis = basis
@@ -75,42 +92,40 @@ class BayesianLinearModel(object):
             raise Exception(msg)
 
         # Number of observations.
+        self.__D = D
         self.__N = 0
 
-        # Check that the location parameter is an array.
-        self.__mu_N = location
-        if location is not None:
-            if not isinstance(location, np.ndarray) and location.ndim != 2:
-                msg = 'The location parameter must be a 2D-numpy array.'
-                raise Exception(msg)
-
-        # Check that the dispersion parameter is an array.
+        # Store prior.
+        self.__mu_0 = location
         self.__S_0 = dispersion
-        self.__S_N = dispersion
-        if location is not None:
-            if not isinstance(dispersion, np.ndarray) and dispersion.ndim != 2:
-                msg = 'The dispersion parameter must be a 2D-numpy array.'
-                raise Exception(msg)
-
-        # Check that the shape parameter is a positive scalar.
         self.__alpha_0 = shape
-        self.__alpha_N = shape
-        if shape is not None:
-            if not np.isscalar(shape) or (shape < 0):
-                msg = 'The shape parameter must be a positive scalar.'
-                raise Exception(msg)
-
-        # Check that the scale parameter is a positive scalar.
         self.__beta_0 = scale
-        self.__beta_N = scale
-        if scale is not None:
-            if not np.isscalar(scale) or (scale < 0):
-                msg = 'The scale parameter must be a positive scalar.'
-                raise Exception(msg)
 
-        # Force object to validate the sufficient statistics after first call
-        # to the update() method.
+        # Work with precision if variance was provided.
+        try:
+            self.__S_0 = np.linalg.inv(self.__S_0)
+        except:
+            pass
+
+        # Reset sufficient statistics.
+        self.__mu_N = None
+        self.__S_N = None
+        self.__alpha_N = None
+        self.__beta_N = None
+
+        # Sufficient statistics have not been validated. Flag object as
+        # uninitialised.
         self.__initialised = False
+
+        # Attempt to initialise object from user input (either the
+        # dimensionality 'D' or the sufficient statistics). If the object can
+        # be initialise and there is an error, hault early. If the object
+        # cannot be initialised, wait until a call to :py:meth:update (do not
+        # throw error).
+        try:
+            self.__initialise(D=self.__D)
+        except:
+            raise
 
     @property
     def location(self):
@@ -128,7 +143,7 @@ class BayesianLinearModel(object):
     def scale(self):
         return self.__beta_N
 
-    def __initialise(self, D, N):
+    def __initialise(self, D=None):
         """Initialise sufficient statistics of the distribution.
 
         This method initialises the sufficient statistics of the multivariate
@@ -154,74 +169,124 @@ class BayesianLinearModel(object):
 
         """
 
+        # Infer dimensionality...
+        if D is None:
+            # From the location parameter.
+            if isinstance(self.__mu_0, np.ndarray) and self.__mu_0.ndim == 2:
+                self.__D = self.__mu_0.shape[0]
+
+            # From the dispersion parameters.
+            elif isinstance(self.__S_0, np.ndarray) and self.__S_0.ndim == 2:
+                self.__D = self.__S_0.shape[0]
+
+            # Cannot infer the dimensionality, it has not been specified. Exit
+            # initialisation.
+            else:
+                return None
+
+        # Check the input dimensionality is a positive scalar.
+        elif not np.isscalar(D) or D <= 0:
+            msg = 'The input dimension must be a positive scalar.'
+            raise Exception(msg)
+
         # Store dimensionality of the data.
-        self.__D = float(D)
+        elif self.__D is None:
+            self.__D = int(D)
 
         # If the location parameter has not been set, use an uninformative
         # value (Eq 7.78 ref [1]).
-        if self.__mu_N is None:
+        if self.__mu_0 is None:
             self.__mu_N = np.zeros((self.__D, 1))
+
+        # Check that the location parameter is an array.
+        elif (not isinstance(self.__mu_0, np.ndarray) or self.__mu_0.ndim != 2
+              or self.__mu_0.shape[1] != 1):
+            msg = 'The location parameter must be a (D x 1) numpy array.'
+            raise Exception(msg)
 
         # Check the location parameter has the same dimensional as the input
         # data (after basis function expansion).
-        elif self.__mu_N.shape[0] != self.__D:
-            msg = 'The location parameter is a ({0[0]} x {0[1]}) matrix. The '
-            msg += 'design matrix (input data after basis function expansion) '
-            msg += 'is {1}-dimensional. The location parameter must be a '
-            msg += '({1} x 1) matrix.'
-            raise Exception(msg.format(self.__mu_N.shape, self.__D))
+        elif self.__mu_0.shape[0] != self.__D:
+            msg = 'The location parameter is a ({0[0]} x {0[1]}) matrix. '
+            msg += 'The problem is {1}-dimensional. The location parameter '
+            msg += 'must be a ({1} x 1) matrix.'
+            raise Exception(msg.format(self.__mu_0.shape, self.__D))
+
+        # User location is valid. Set location to specified value.
+        else:
+            self.__mu_N = self.__mu_0
 
         # If the dispersion parameter has not been set, use an uninformative
         # value (Eq 7.79 ref [1]).
-        if self.__S_N is None:
+        if self.__S_0 is None:
             self.__S_N = np.zeros((self.__D, self.__D))
+
+        # Check that the dispersion parameter is an array.
+        elif not isinstance(self.__S_0, np.ndarray) or self.__S_0.ndim != 2:
+            msg = 'The dispersion parameter must be a (D x D) numpy array.'
+            raise Exception(msg)
 
         # Check the dispersion parameter has the same dimensional as the input
         # data (after basis function expansion).
-        elif ((self.__S_N.shape[0] != self.__D) and
-              (self.__S_N.shape[1] != self.__D)):
+        elif ((self.__S_0.shape[0] != self.__D) and
+              (self.__S_0.shape[1] != self.__D)):
             msg = 'The dispersion parameter is a ({0[0]} x {0[1]}) matrix. '
             msg += 'The design matrix (input data after basis function '
             msg += 'expansion) is {1}-dimensional. The dispersion parameter '
             msg += 'must be a ({1} x {1}) matrix.'
-            raise Exception(msg.format(self.__S_N.shape, int(self.__D)))
+            raise Exception(msg.format(self.__S_0.shape, self.__D))
 
         # Convert covariance into precision.
         else:
-            self.__S_0 = np.linalg.inv(self.__S_0)
-            self.__S_N = np.linalg.inv(self.__S_N)
+            self.__S_N = self.__S_0
 
         # Use uninformative shape (Eq 7.80 ref [1]).
-        if self.__alpha_N is None:
-            self.__alpha_N = -D / 2.0
+        if self.__alpha_0 is None:
+            self.__alpha_N = -float(self.__D) / 2.0
 
         # Check the shape parameter is greater than zero.
-        elif self.__alpha_N < 0:
+        elif not np.isscalar(self.__alpha_0) or self.__alpha_0 < 0:
             msg = 'The shape parameter must be greater than or equal to zero.'
             raise Exception(msg)
 
+        # User shape is valid. Set shape to specified value.
+        else:
+            self.__alpha_N = self.__alpha_0
+
         # Use uninformative scale (Eq 7.81 and 7.82 ref [1]).
-        if self.__beta_N is None:
+        if self.__beta_0 is None:
             self.__beta_N = 0
 
         # Check the scale parameter is greater than zero.
-        elif self.__beta_N < 0:
+        elif not np.isscalar(self.__beta_0) or self.__beta_0 < 0:
             msg = 'The scale parameter must be greater than or equal to zero.'
             raise Exception(msg)
 
-        # Ensure distribution is defined (i.e. D < N - 1). See:
-        #
-        #     Maruyama, Y. and E. George (2008). A g-prior extension
-        #     for p > n. Technical report, U. Tokyo.
-        #
-        if D >= (N - 1):
-            msg = 'Update is only defined for D < N - 1. Initialise with more '
-            msg += 'than {0:d} observations.'
-            raise Exception(msg.format(D + 1))
+        # User scale is valid. Set scale to specified value.
+        else:
+            self.__beta_N = self.__beta_0
 
         # The sufficient statistics have been validated. Prevent object from
         # checking the sufficient statistics again.
         self.__initialised = True
+
+    def reset(self):
+        """Reset sufficient statistics to prior values."""
+
+        # Force the model to reset the sufficient statistics.
+        self.__initialised = False
+
+        # Erase current sufficient statistics.
+        self.__mu_N = None
+        self.__S_N = None
+        self.__alpha_N = None
+        self.__beta_N = None
+
+        # Attempt to initialise the sufficient statistics from the prior.
+        try:
+            self.__initialise()
+        except:
+            raise
 
     def __design_matrix(self, X):
         """Perform basis function expansion to create design matrix."""
@@ -268,18 +333,30 @@ class BayesianLinearModel(object):
 
         # Perform basis function expansion.
         phi = self.__design_matrix(X)
+
+        # Get size of input data.
         N, D = phi.shape
         self.__N += N
 
         # Check sufficient statistics are valid (only once).
         if not self.__initialised:
-            self.__initialise(D, N)
+            self.__initialise(D)
+
+            # Ensure distribution is defined (i.e. D < N - 1). See:
+            #
+            #     Maruyama, Y. and E. George (2008). A g-prior extension
+            #     for p > n. Technical report, U. Tokyo.
+            #
+            if self.__alpha_0 is None and self.__D >= (N - 1):
+                msg = 'Update is only defined for D < N - 1. Initialise with '
+                msg += 'more than {0} observations.'
+                raise Exception(msg.format(self.__D + 1))
 
         # Check dimensions of input data.
         if self.__D != D:
             msg = 'The input data, after basis function expansion, is '
             msg += '{0}-dimensional. Expected {1}-dimensional data.'
-            Exception(msg.format(D, self.__D))
+            raise Exception(msg.format(D, self.__D))
 
         # Store prior parameters.
         mu_0 = self.__mu_N

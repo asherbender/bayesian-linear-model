@@ -101,7 +101,7 @@ closed form expressions.
 
        <hr>
 
-   .. automethod:: evidence
+   .. automethod:: update
 
    .. raw:: html
 
@@ -113,13 +113,20 @@ closed form expressions.
 
        <hr>
 
+   .. automethod:: evidence
+
+   .. raw:: html
+
+       <hr>
+
    .. automethod:: random
 
    .. raw:: html
 
        <hr>
 
-   .. automethod:: update
+   .. automethod:: reset
+
 
 References
 ===================================
