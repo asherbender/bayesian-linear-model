@@ -434,7 +434,17 @@ class BayesianLinearModel(object):
               (N != K), a matrix is returned where each row represents an
               element in ``y`` and each column represents a row in ``X``.
 
+        Raises:
+          ~exceptions.Exception: If the sufficient statistics have not been
+            initialised with observed data. Call :py:meth:`.update` first.
+
         """
+
+        # Ensure the sufficient statistics have been initialised.
+        if not self.__initialised:
+            msg = 'The sufficient statistics need to be initialised before '
+            msg += "calling 'predict()'. Run 'update()' first."
+            raise Exception(msg)
 
         # Perform basis function expansion.
         phi = self.__design_matrix(X)
@@ -539,15 +549,16 @@ class BayesianLinearModel(object):
         can safely be ignored.
 
         Returns:
-          |float|: The log marginal likelihood is returned. If the object has
-            not been initialised with data, |None| is returned.
+          |float|: The log marginal likelihood is returned.
+
+        Raises:
+          ~exceptions.Exception: If the sufficient statistics have not been
+            initialised with observed data. Call :py:meth:`.update` first.
 
         """
 
-        #     Eq 3.118 ref [2]
-        #     Eq  203  ref [3]
-
         # The likelihood can be broken into simpler components:
+        # (Eq 3.118 ref [2], Eq 203 ref [3])
         #
         #     pdf = A * B * C * D
         #
@@ -570,9 +581,11 @@ class BayesianLinearModel(object):
         #     log(D) = ln(det(S_N)^0.5) - ln(det(S_0)^0.5)
         #
 
-        # Ensure the model has been updated with data.
+        # Ensure the sufficient statistics have been initialised.
         if not self.__initialised:
-            return None
+            msg = 'The sufficient statistics need to be initialised before '
+            msg += "calling 'evidence()'. Run 'update()' first."
+            raise Exception(msg)
 
         # Create local copy of sufficient statistics for legibility.
         N = self.__N
@@ -634,8 +647,17 @@ class BayesianLinearModel(object):
             posterior. Each row is a D-dimensional vector of random model
             weights.
 
+        Raises:
+          ~exceptions.Exception: If the sufficient statistics have not been
+            initialised with observed data. Call :py:meth:`.update` first.
 
         """
+
+        # Ensure the sufficient statistics have been initialised.
+        if not self.__initialised:
+            msg = 'The sufficient statistics need to be initialised before '
+            msg += "calling 'random()'. Run 'update()' first."
+            raise Exception(msg)
 
         # The posterior over the model weights is a Student-T distribution. To
         # generate random models, sample from the posterior marginals.
