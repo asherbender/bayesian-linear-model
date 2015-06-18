@@ -358,12 +358,20 @@ class BayesianLinearModel(object):
             msg += '{0}-dimensional. Expected {1}-dimensional data.'
             raise Exception(msg.format(D, self.__D))
 
+        # Update sufficient statistics.
+        self.__mu_N, self.__S_N, self.__alpha_N, self.__beta_N = \
+            self._update(phi, y, self.__mu_N, self.__S_N,
+                         self.__alpha_N, self.__beta_N)
+
+    def _update(self, phi, y, mu, S, alpha, beta):
+        """Update sufficient statistics with no error checking."""
+
         # Store prior parameters.
-        mu_0 = self.__mu_N
-        S_0 = self.__S_N
+        mu_0 = mu
+        S_0 = S
 
         # Update precision (Eq 7.71 ref [1], modified for precision).
-        self.__S_N = S_N = S_0 + np.dot(phi.T, phi)
+        S = S_0 + np.dot(phi.T, phi)
 
         # Update mean using cholesky decomposition.
         #
@@ -376,16 +384,19 @@ class BayesianLinearModel(object):
         #
         # Update mean (Eq 7.70 ref[1], modified for precision).
         b = S_0.dot(mu_0) + phi.T.dot(y)
-        L = np.linalg.cholesky(self.__S_N)
-        self.__mu_N = mu_N = np.linalg.solve(L.T, np.linalg.solve(L, b))
+        L = np.linalg.cholesky(S)
+        mu = np.linalg.solve(L.T, np.linalg.solve(L, b))
 
         # Update shape parameter (Eq 7.72 ref [1]).
-        self.__alpha_N += N / 2.0
+        N = phi.shape[0]
+        alpha += N / 2.0
 
         # Update scale parameter (Eq 7.73 ref [1]).
-        self.__beta_N += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
-                                      y.T.dot(y) -
-                                      mu_N.T.dot(S_N.dot(mu_N))))
+        beta += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
+                             y.T.dot(y) -
+                             mu.T.dot(S.dot(mu))))
+
+        return mu, S, alpha, beta
 
     def predict(self, X, y=None, variance=False):
         r"""Calculate posterior predictive values.
