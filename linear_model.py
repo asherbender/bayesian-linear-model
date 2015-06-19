@@ -34,6 +34,86 @@ from scipy.special import gammaln
 from numpy.core.umath_tests import inner1d
 
 
+def update(phi, y, mu, S, alpha, beta):
+    """Update sufficient statistics."""
+
+    # Store prior parameters.
+    mu_0 = mu
+    S_0 = S
+
+    # Update precision (Eq 7.71 ref [1], modified for precision).
+    S = S_0 + np.dot(phi.T, phi)
+
+    # Update mean using cholesky decomposition.
+    #
+    # For:
+    #     Ax = b
+    #     L = chol(A)
+    #
+    # The solution can be given by:
+    #     x = L.T \ (L \ b)
+    #
+    # Update mean (Eq 7.70 ref[1], modified for precision).
+    b = S_0.dot(mu_0) + phi.T.dot(y)
+    L = np.linalg.cholesky(S)
+    mu = np.linalg.solve(L.T, np.linalg.solve(L, b))
+
+    # Update shape parameter (Eq 7.72 ref [1]).
+    N = phi.shape[0]
+    alpha += N / 2.0
+
+    # Update scale parameter (Eq 7.73 ref [1]).
+    beta += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
+                         y.T.dot(y) -
+                         mu.T.dot(S.dot(mu))))
+
+    return mu, S, alpha, beta
+
+
+def uninformative_fit(phi, y):
+    """Initialise sufficient statistics using an uninformative prior."""
+
+    N, D = phi.shape
+    XX = np.dot(phi.T, phi)
+
+    mu = np.linalg.solve(XX, np.dot(phi.T, y))
+    V = np.linalg.inv(XX)
+    alpha = float(N - D) / 2.0
+    beta = 0.5 * np.sum((y - np.dot(phi, mu))**2)
+
+    return mu, V, alpha, beta
+
+
+def predict_mean(phi, mu):
+    """Calculate posterior predictive mean."""
+
+    # Calculate mean.
+    #     Eq 7.76 ref [1]
+    return np.dot(phi, mu)
+
+
+def predict_variance(phi, S, alpha, beta):
+    """Calculate posterior predictive variance."""
+
+    # Note that the scaling parameter is not equal to the variance in
+    # the general case. In the limit, as the number of degrees of
+    # freedom reaches infinity, the scale parameter becomes equivalent
+    # to the variance of a Gaussian.
+    uw = np.dot(phi, np.linalg.solve(S, phi.T))
+    S_hat = (beta / alpha) * (np.eye(len(phi)) + uw)
+    S_hat = np.sqrt(np.diag(S_hat))
+
+    return S_hat
+
+
+def posterior_likelihood(y, m_hat, S_hat, alpha):
+    """Calculate posterior predictive data likelihood."""
+
+    q = scipy.stats.t.pdf(y, df=2 * alpha, loc=m_hat, scale=S_hat)
+
+    return q
+
+
 class BayesianLinearModel(object):
     r"""Bayesian linear model.
 
@@ -360,43 +440,8 @@ class BayesianLinearModel(object):
 
         # Update sufficient statistics.
         self.__mu_N, self.__S_N, self.__alpha_N, self.__beta_N = \
-            self._update(phi, y, self.__mu_N, self.__S_N,
-                         self.__alpha_N, self.__beta_N)
-
-    def _update(self, phi, y, mu, S, alpha, beta):
-        """Update sufficient statistics with no error checking."""
-
-        # Store prior parameters.
-        mu_0 = mu
-        S_0 = S
-
-        # Update precision (Eq 7.71 ref [1], modified for precision).
-        S = S_0 + np.dot(phi.T, phi)
-
-        # Update mean using cholesky decomposition.
-        #
-        # For:
-        #     Ax = b
-        #     L = chol(A)
-        #
-        # The solution can be given by:
-        #     x = L.T \ (L \ b)
-        #
-        # Update mean (Eq 7.70 ref[1], modified for precision).
-        b = S_0.dot(mu_0) + phi.T.dot(y)
-        L = np.linalg.cholesky(S)
-        mu = np.linalg.solve(L.T, np.linalg.solve(L, b))
-
-        # Update shape parameter (Eq 7.72 ref [1]).
-        N = phi.shape[0]
-        alpha += N / 2.0
-
-        # Update scale parameter (Eq 7.73 ref [1]).
-        beta += float(0.5 * (mu_0.T.dot(S_0.dot(mu_0)) +
-                             y.T.dot(y) -
-                             mu.T.dot(S.dot(mu))))
-
-        return mu, S, alpha, beta
+            update(phi, y, self.__mu_N, self.__S_N,
+                   self.__alpha_N, self.__beta_N)
 
     def predict(self, X, y=None, variance=False):
         r"""Calculate posterior predictive values.
@@ -461,19 +506,14 @@ class BayesianLinearModel(object):
         phi = self.__design_matrix(X)
 
         # Calculate mean.
-        #     Eq 7.76 ref [1]
-        m_hat = np.dot(phi, self.__mu_N)
+        m_hat = predict_mean(phi, self.__mu_N)
 
         # Calculate variance.
-        #     Eq 7.76 ref [1]
         if (y is not None) or variance:
-            # Note that the scaling parameter is not equal to the variance in
-            # the general case. In the limit, as the number of degrees of
-            # freedom reaches infinity, the scale parameter becomes equivalent
-            # to the variance of a Gaussian.
-            uw = np.dot(phi, np.linalg.solve(self.__S_N, phi.T))
-            S_hat = (self.__beta_N/self.__alpha_N) * (np.eye(len(phi)) + uw)
-            S_hat = np.sqrt(np.diag(S_hat))
+            S_hat = predict_variance(phi,
+                                     self.__S_N,
+                                     self.__alpha_N,
+                                     self.__beta_N)
 
             # Calculate a one sided 97.5%, t-distribution, confidence
             # interval. This corresponds to a 95% two-sided confidence
@@ -500,19 +540,19 @@ class BayesianLinearModel(object):
 
                 # Return array.
                 if N == K:
-                    l = scipy.stats.t.pdf(y.squeeze(),
-                                          df=2 * self.__alpha_N,
-                                          loc=m_hat.squeeze(),
-                                          scale=S_hat.squeeze())
+                    q = posterior_likelihood(y.squeeze(),
+                                             m_hat.squeeze(),
+                                             S_hat.squeeze(),
+                                             self.__alpha_N)
 
                 # Return matrix result.
                 else:
-                    l = scipy.stats.t.pdf(y.reshape((K, 1)),
-                                          df=2 * self.__alpha_N,
-                                          loc=m_hat.reshape((1, N)),
-                                          scale=S_hat.reshape((1, N)))
+                    q = posterior_likelihood(y.reshape((K, 1)),
+                                             m_hat.reshape((1, N)),
+                                             S_hat.reshape((1, N)),
+                                             self.__alpha_N)
 
-                return (m_hat, ci * S_hat[:, np.newaxis], l)
+                return (m_hat, ci * S_hat[:, np.newaxis], q)
 
         else:
             return m_hat
