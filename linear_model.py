@@ -114,6 +114,113 @@ def posterior_likelihood(y, m_hat, S_hat, alpha):
     return q
 
 
+def evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
+    """Return log marginal likelihood of the data (model evidence).
+
+    The log marginal likelihood is calculated by taking the log of the
+    following equation:
+
+    .. math::
+
+        \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
+
+        p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
+                                     \frac{\det{V_N}^\frac{1}{2}}
+                                          {\det{V_0}^\frac{1}{2}}
+                                     \frac{b_0^{a_0}}
+                                          {b_N^{a_N}}
+                                     \frac{\Gamma\left(a_N\right)}
+                                          {\Gamma\left(a_0\right)}
+
+    Note that the default prior is an improper, uninformative prior. The
+    marginal likelihood equation, specified above, equation is undefined
+    for improper priors. To approximate the marginal likelihood in this
+    situation, the prior sufficient statistics :math:`\left(V_0, a_0,
+    b_0\right)` are selectively ignored if they are unset. If all prior
+    sufficient statistics are unset (default) the marginal likelihood
+    equation is approximated as:
+
+    .. math::
+
+        \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
+
+        p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
+                                     \det{V_N}^\frac{1}{2}
+                                     \frac{1}
+                                          {b_N^{a_N}}
+                                     \Gamma\left(a_N\right)
+
+    Although this equation returns an approximate marginal likelihood, it
+    can still be used for model selection. The omitted terms, which cannot
+    be evaluated, create a constant which scales the final result. During
+    model selection this constant will be identical across all models and
+    can safely be ignored.
+
+    Returns:
+      |float|: The log marginal likelihood is returned.
+
+    Raises:
+      ~exceptions.Exception: If the sufficient statistics have not been
+        initialised with observed data. Call :py:meth:`.update` first.
+
+    """
+
+    # The likelihood can be broken into simpler components:
+    # (Eq 3.118 ref [2], Eq 203 ref [3])
+    #
+    #     pdf = A * B * C * D
+    #
+    # where:
+    #
+    #     A = 1 / (2 * pi)^(N/2)
+    #     B = (b_0 ^ a_0) / (b_N ^ a_N)
+    #     C = gamma(a_N) / gamma(a_0)
+    #     D = det(S_N)^(1/2) / det(S_0)^(1/2)
+    #
+    # Using log probabilities:
+    #
+    #     pdf = A + B + C + D
+    #
+    # where:
+    #
+    #     log(A) = -0.5 * N * ln(2 * pi)
+    #     lob(B) = a_0 * ln(b_0) - a_N * ln(b_N)
+    #     log(C) = gammaln(a_N) - gammaln(a_0)
+    #     log(D) = ln(det(S_N)^0.5) - ln(det(S_0)^0.5)
+    #
+
+    A = -0.5 * N * np.log(2 * np.pi)
+
+    # Prior value specified.
+    if beta_0 is not None:
+        B = alpha_0 * np.log(beta_0) - alpha_N * np.log(beta_N)
+
+    # Approximate uninformative prior.
+    else:
+        B = -alpha_N * np.log(beta_N)
+
+    # Prior value specified.
+    if alpha_0 is not None:
+        C = gammaln(alpha_N) - gammaln(alpha_0)
+
+    # Approximate uninformative prior.
+    else:
+        C = gammaln(alpha_N)
+
+    # Prior value specified.
+    S_N = np.linalg.inv(S_N)
+    if S_0 is not None:
+        S_0 = np.linalg.inv(S_0)
+        D = 0.5 * np.log(np.linalg.det(S_N)) - \
+            0.5 * np.log(np.linalg.det(S_0))
+
+    # Approximate uninformative prior.
+    else:
+        D = 0.5 * np.log(np.linalg.det(S_N))
+
+    return A + B + C + D
+
+
 class BayesianLinearModel(object):
     r"""Bayesian linear model.
 
@@ -638,44 +745,9 @@ class BayesianLinearModel(object):
             msg += "calling 'evidence()'. Run 'update()' first."
             raise Exception(msg)
 
-        # Create local copy of sufficient statistics for legibility.
-        N = self.__N
-        S_0 = self.__S_0
-        a_0 = self.__alpha_0
-        b_0 = self.__beta_0
-        S_N = np.linalg.inv(self.__S_N)
-        a_N = self.__alpha_N
-        b_N = self.__beta_N
-
-        A = -0.5 * N * np.log(2 * np.pi)
-
-        # Prior value specified.
-        if b_0 is not None:
-            B = a_0 * np.log(b_0) - a_N * np.log(b_N)
-
-        # Approximate uninformative prior.
-        else:
-            B = -a_N * np.log(b_N)
-
-        # Prior value specified.
-        if a_0 is not None:
-            C = gammaln(a_N) - gammaln(a_0)
-
-        # Approximate uninformative prior.
-        else:
-            C = gammaln(a_N)
-
-        # Prior value specified.
-        if S_0 is not None:
-            S_0 = np.linalg.inv(S_0)
-            D = 0.5 * np.log(np.linalg.det(S_N)) - \
-                0.5 * np.log(np.linalg.det(S_0))
-
-        # Approximate uninformative prior.
-        else:
-            D = 0.5 * np.log(np.linalg.det(S_N))
-
-        return A + B + C + D
+        return evidence(self.__N,
+                        self.__S_N, self.__alpha_N, self.__beta_N,
+                        self.__S_0, self.__alpha_0, self.__beta_0)
 
     def random(self, samples=1):
         r"""Draw a random model from the posterior distribution.
