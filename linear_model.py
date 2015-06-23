@@ -33,16 +33,46 @@ import scipy.stats
 from scipy.special import gammaln
 from numpy.core.umath_tests import inner1d
 
+# --------------------------------------------------------------------------- #
+#                              Module Functions
+# --------------------------------------------------------------------------- #
 
-def update(phi, y, mu, S, alpha, beta):
-    """Update sufficient statistics."""
+
+def update(X, y, mu, S, alpha, beta):
+    r"""Update sufficient statistics of the Normal-inverse-gamma distribution.
+
+    .. math::
+
+        \mathbf{w}_N &= \mathbf{V_N}\left(\mathbf{V_0}^{-1}\mathbf{w}_0 +
+                                          \Phi^T\mathbf{y}\right)        \\
+        \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \Phi^T\Phi\right)^{-1} \\
+        a_N          &= a_0 + \frac{n}{2}                                \\
+        b_N          &= b_0 + \frac{k}{2}
+                        \left(\mathbf{w}_0^T\mathbf{V}_0^{-1}\mathbf{w}_0 +
+                              \mathbf{y}^T\mathbf{y} -
+                              \mathbf{w}_N^T\mathbf{V}_N^{-1}\mathbf{w}_N
+                        \right)
+
+    Args:
+      X (|ndarray|): (N x M) model inputs.
+      y (|ndarray|): (N x 1) target outputs.
+      mu (|ndarray|): Mean (:math:`\mathbf{w}_0`) of the normal
+        distribution.
+      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
+        distribution.
+      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
+        distribution.
+      beta (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
+        distribution.
+
+    """
 
     # Store prior parameters.
     mu_0 = mu
     S_0 = S
 
     # Update precision (Eq 7.71 ref [1], modified for precision).
-    S = S_0 + np.dot(phi.T, phi)
+    S = S_0 + np.dot(X.T, X)
 
     # Update mean using cholesky decomposition.
     #
@@ -54,12 +84,12 @@ def update(phi, y, mu, S, alpha, beta):
     #     x = L.T \ (L \ b)
     #
     # Update mean (Eq 7.70 ref[1], modified for precision).
-    b = S_0.dot(mu_0) + phi.T.dot(y)
+    b = S_0.dot(mu_0) + X.T.dot(y)
     L = np.linalg.cholesky(S)
     mu = np.linalg.solve(L.T, np.linalg.solve(L, b))
 
     # Update shape parameter (Eq 7.72 ref [1]).
-    N = phi.shape[0]
+    N = X.shape[0]
     alpha += N / 2.0
 
     # Update scale parameter (Eq 7.73 ref [1]).
@@ -70,44 +100,84 @@ def update(phi, y, mu, S, alpha, beta):
     return mu, S, alpha, beta
 
 
-def uninformative_fit(phi, y):
+def uninformative_fit(X, y):
     """Initialise sufficient statistics using an uninformative prior."""
 
-    N, D = phi.shape
-    XX = np.dot(phi.T, phi)
+    N, D = X.shape
+    XX = np.dot(X.T, X)
 
-    mu = np.linalg.solve(XX, np.dot(phi.T, y))
+    mu = np.linalg.solve(XX, np.dot(X.T, y))
     V = np.linalg.inv(XX)
     alpha = float(N - D) / 2.0
-    beta = 0.5 * np.sum((y - np.dot(phi, mu))**2)
+    beta = 0.5 * np.sum((y - np.dot(X, mu))**2)
 
     return mu, V, alpha, beta
 
 
-def predict_mean(phi, mu):
-    """Calculate posterior predictive mean."""
+def predict_mean(X, mu):
+    """Calculate posterior predictive mean.
+
+    Args:
+      X (|ndarray|): (N x M) input query locations (:math:`\tilde{\mathbf{X}}`)
+          to perform prediction.
+      mu (|ndarray|): Mean (:math:`\mathbf{w}_0`) of the normal
+        distribution.
+
+    Returns:
+      |ndarray|: posterior mean
+
+    """
 
     # Calculate mean.
     #     Eq 7.76 ref [1]
-    return np.dot(phi, mu)
+    return np.dot(X, mu)
 
 
-def predict_variance(phi, S, alpha, beta):
-    """Calculate posterior predictive variance."""
+def predict_variance(X, S, alpha, beta):
+    """Calculate posterior predictive variance.
+
+    Args:
+      X (|ndarray|): (N x M) input query locations (:math:`\tilde{\mathbf{X}}`)
+          to perform prediction.
+      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
+        distribution.
+      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
+        distribution.
+      beta (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
+        distribution.
+
+    Returns:
+      |ndarray|: posterior variance
+
+    """
 
     # Note that the scaling parameter is not equal to the variance in
     # the general case. In the limit, as the number of degrees of
     # freedom reaches infinity, the scale parameter becomes equivalent
     # to the variance of a Gaussian.
-    uw = np.dot(phi, np.linalg.solve(S, phi.T))
-    S_hat = (beta / alpha) * (np.eye(len(phi)) + uw)
+    uw = np.dot(X, np.linalg.solve(S, X.T))
+    S_hat = (beta / alpha) * (np.eye(len(X)) + uw)
     S_hat = np.sqrt(np.diag(S_hat))
 
     return S_hat
 
 
 def posterior_likelihood(y, m_hat, S_hat, alpha):
-    """Calculate posterior predictive data likelihood."""
+    """Calculate posterior predictive data likelihood.
+
+    Args:
+      y (|ndarray|): (N x 1) output query locations.
+      m_hat (|ndarray|): Predicted mean.
+      S_hat (|ndarray|): Predicted variance.
+      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
+        distribution.
+      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
+        distribution.
+
+    Returns:
+      |ndarray|: posterior variance
+
+    """
 
     q = scipy.stats.t.pdf(y, df=2 * alpha, loc=m_hat, scale=S_hat)
 
@@ -115,7 +185,7 @@ def posterior_likelihood(y, m_hat, S_hat, alpha):
 
 
 def evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
-    """Return log marginal likelihood of the data (model evidence).
+    r"""Return log marginal likelihood of the data (model evidence).
 
     The log marginal likelihood is calculated by taking the log of the
     following equation:
@@ -156,12 +226,23 @@ def evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
     model selection this constant will be identical across all models and
     can safely be ignored.
 
+    Args:
+      N (|int|): Number of observations.
+      S_N (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
+        distribution.
+      alpha_N (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
+        distribution.
+      beta_N (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
+        distribution.
+      S_0 (|ndarray|, *optional*): Prior dispersion (:math:`\mathbf{V}_0`) of
+        the normal distribution. Set to |None| to use uninformative value.
+      alpha_0 (|float|, *optional*): Prior shape parameter (:math:`a_0`) of the
+        inverse Gamma distribution. Set to |None| to use uninformative value.
+      beta_0 (|float|, *optional*): Prior scale parameter (:math:`b_0`) of the
+        inverse Gamma distribution. Set to |None| to use uninformative value.
+
     Returns:
       |float|: The log marginal likelihood is returned.
-
-    Raises:
-      ~exceptions.Exception: If the sufficient statistics have not been
-        initialised with observed data. Call :py:meth:`.update` first.
 
     """
 
@@ -219,6 +300,10 @@ def evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
         D = 0.5 * np.log(np.linalg.det(S_N))
 
     return A + B + C + D
+
+# --------------------------------------------------------------------------- #
+#                               Module Objects
+# --------------------------------------------------------------------------- #
 
 
 class BayesianLinearModel(object):
