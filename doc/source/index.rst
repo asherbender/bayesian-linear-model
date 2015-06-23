@@ -88,8 +88,52 @@ closed form expressions.
    specified in the doc-string of the module. The class is documented by
    subsequent calls to 'autoclass' and 'automethod'.
 
+
+Functions
+===================================
+
 .. currentmodule:: linear_model
 .. automodule:: linear_model
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: update
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: uninformative_fit
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: predict_mean
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: predict_variance
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: posterior_likelihood
+
+.. raw:: html
+
+    <hr>
+
+.. autofunction:: evidence
+
+
+Objects
+===================================
 
 .. raw:: html
 
@@ -127,6 +171,11 @@ closed form expressions.
 
    .. automethod:: reset
 
+
+
+.. raw:: html
+
+    <hr>
 
 References
 ===================================

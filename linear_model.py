@@ -44,8 +44,8 @@ def update(X, y, mu, S, alpha, beta):
     .. math::
 
         \mathbf{w}_N &= \mathbf{V_N}\left(\mathbf{V_0}^{-1}\mathbf{w}_0 +
-                                          \Phi^T\mathbf{y}\right)        \\
-        \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \Phi^T\Phi\right)^{-1} \\
+                                          \mathbf{X}^T\mathbf{y}\right)        \\
+        \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \mathbf{X}^T\mathbf{X}\right)^{-1} \\
         a_N          &= a_0 + \frac{n}{2}                                \\
         b_N          &= b_0 + \frac{k}{2}
                         \left(\mathbf{w}_0^T\mathbf{V}_0^{-1}\mathbf{w}_0 +
@@ -64,6 +64,10 @@ def update(X, y, mu, S, alpha, beta):
         distribution.
       beta (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
         distribution.
+
+    Returns:
+      |tuple|: The updated sufficient statistics are return as a tuple (mu, S,
+           alpha, beta)
 
     """
 
@@ -101,7 +105,26 @@ def update(X, y, mu, S, alpha, beta):
 
 
 def uninformative_fit(X, y):
-    """Initialise sufficient statistics using an uninformative prior."""
+    r"""Initialise sufficient statistics using an uninformative prior.
+
+    .. math::
+
+        \mathbf{w}_N &= \mathbf{V_N}\mathbf{X}^T\mathbf{y}         \\
+        \mathbf{V_N} &= \left(\mathbf{X}^T\mathbf{X}\right)^{-1}   \\
+        a_N          &= \frac{N - D}{2}                            \\
+        b_N          &= \frac{1}{2}
+                        \left(\mathbf{y} - \mathbf{X}\mathbf{w}_N\right)^T
+                        \left(\mathbf{y} - \mathbf{X}\mathbf{w}_N\right)
+
+    Args:
+      X (|ndarray|): (N x M) model inputs.
+      y (|ndarray|): (N x 1) target outputs.
+
+    Returns:
+      |tuple|: The updated sufficient statistics are return as a tuple (mu, S,
+           alpha, beta)
+
+    """
 
     N, D = X.shape
     XX = np.dot(X.T, X)
