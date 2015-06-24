@@ -38,7 +38,7 @@ from numpy.core.umath_tests import inner1d
 # --------------------------------------------------------------------------- #
 
 
-def update(X, y, mu, S, alpha, beta):
+def _update(X, y, mu, S, alpha, beta):
     r"""Update sufficient statistics of the Normal-inverse-gamma distribution.
 
     .. math::
@@ -104,7 +104,7 @@ def update(X, y, mu, S, alpha, beta):
     return mu, S, alpha, beta
 
 
-def uninformative_fit(X, y):
+def _uninformative_fit(X, y):
     r"""Initialise sufficient statistics using an uninformative prior.
 
     .. math::
@@ -137,7 +137,7 @@ def uninformative_fit(X, y):
     return mu, V, alpha, beta
 
 
-def predict_mean(X, mu):
+def _predict_mean(X, mu):
     """Calculate posterior predictive mean.
 
     Args:
@@ -156,7 +156,7 @@ def predict_mean(X, mu):
     return np.dot(X, mu)
 
 
-def predict_variance(X, S, alpha, beta):
+def _predict_variance(X, S, alpha, beta):
     """Calculate posterior predictive variance.
 
     Args:
@@ -185,7 +185,7 @@ def predict_variance(X, S, alpha, beta):
     return S_hat
 
 
-def posterior_likelihood(y, m_hat, S_hat, alpha):
+def _posterior_likelihood(y, m_hat, S_hat, alpha):
     """Calculate posterior predictive data likelihood.
 
     Args:
@@ -207,7 +207,7 @@ def posterior_likelihood(y, m_hat, S_hat, alpha):
     return q
 
 
-def evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
+def _evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
     r"""Return log marginal likelihood of the data (model evidence).
 
     The log marginal likelihood is calculated by taking the log of the
@@ -655,8 +655,8 @@ class BayesianLinearModel(object):
 
         # Update sufficient statistics.
         self.__mu_N, self.__S_N, self.__alpha_N, self.__beta_N = \
-            update(phi, y, self.__mu_N, self.__S_N,
-                   self.__alpha_N, self.__beta_N)
+            _update(phi, y, self.__mu_N, self.__S_N,
+                    self.__alpha_N, self.__beta_N)
 
     def predict(self, X, y=None, variance=False):
         r"""Calculate posterior predictive values.
@@ -721,14 +721,14 @@ class BayesianLinearModel(object):
         phi = self.__design_matrix(X)
 
         # Calculate mean.
-        m_hat = predict_mean(phi, self.__mu_N)
+        m_hat = _predict_mean(phi, self.__mu_N)
 
         # Calculate variance.
         if (y is not None) or variance:
-            S_hat = predict_variance(phi,
-                                     self.__S_N,
-                                     self.__alpha_N,
-                                     self.__beta_N)
+            S_hat = _predict_variance(phi,
+                                      self.__S_N,
+                                      self.__alpha_N,
+                                      self.__beta_N)
 
             # Calculate a one sided 97.5%, t-distribution, confidence
             # interval. This corresponds to a 95% two-sided confidence
@@ -755,17 +755,17 @@ class BayesianLinearModel(object):
 
                 # Return array.
                 if N == K:
-                    q = posterior_likelihood(y.squeeze(),
-                                             m_hat.squeeze(),
-                                             S_hat.squeeze(),
-                                             self.__alpha_N)
+                    q = _posterior_likelihood(y.squeeze(),
+                                              m_hat.squeeze(),
+                                              S_hat.squeeze(),
+                                              self.__alpha_N)
 
                 # Return matrix result.
                 else:
-                    q = posterior_likelihood(y.reshape((K, 1)),
-                                             m_hat.reshape((1, N)),
-                                             S_hat.reshape((1, N)),
-                                             self.__alpha_N)
+                    q = _posterior_likelihood(y.reshape((K, 1)),
+                                              m_hat.reshape((1, N)),
+                                              S_hat.reshape((1, N)),
+                                              self.__alpha_N)
 
                 return (m_hat, ci * S_hat[:, np.newaxis], q)
 
@@ -823,39 +823,15 @@ class BayesianLinearModel(object):
 
         """
 
-        # The likelihood can be broken into simpler components:
-        # (Eq 3.118 ref [2], Eq 203 ref [3])
-        #
-        #     pdf = A * B * C * D
-        #
-        # where:
-        #
-        #     A = 1 / (2 * pi)^(N/2)
-        #     B = (b_0 ^ a_0) / (b_N ^ a_N)
-        #     C = gamma(a_N) / gamma(a_0)
-        #     D = det(S_N)^(1/2) / det(S_0)^(1/2)
-        #
-        # Using log probabilities:
-        #
-        #     pdf = A + B + C + D
-        #
-        # where:
-        #
-        #     log(A) = -0.5 * N * ln(2 * pi)
-        #     lob(B) = a_0 * ln(b_0) - a_N * ln(b_N)
-        #     log(C) = gammaln(a_N) - gammaln(a_0)
-        #     log(D) = ln(det(S_N)^0.5) - ln(det(S_0)^0.5)
-        #
-
         # Ensure the sufficient statistics have been initialised.
         if not self.__initialised:
             msg = 'The sufficient statistics need to be initialised before '
             msg += "calling 'evidence()'. Run 'update()' first."
             raise Exception(msg)
 
-        return evidence(self.__N,
-                        self.__S_N, self.__alpha_N, self.__beta_N,
-                        self.__S_0, self.__alpha_0, self.__beta_0)
+        return _evidence(self.__N,
+                         self.__S_N, self.__alpha_N, self.__beta_N,
+                         self.__S_0, self.__alpha_0, self.__beta_0)
 
     def random(self, samples=1):
         r"""Draw a random model from the posterior distribution.
