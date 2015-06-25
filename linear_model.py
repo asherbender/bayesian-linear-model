@@ -185,7 +185,7 @@ def _predict_variance(X, S, alpha, beta):
     return S_hat
 
 
-def _posterior_likelihood(y, m_hat, S_hat, alpha):
+def _posterior_likelihood(y, m_hat, S_hat, alpha, log=False):
     """Calculate posterior predictive data likelihood.
 
     Args:
@@ -196,13 +196,17 @@ def _posterior_likelihood(y, m_hat, S_hat, alpha):
         distribution.
       alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
         distribution.
+      log (|bool|, *optional*): Set to true to return the log-likelihood.
 
     Returns:
       |ndarray|: posterior variance
 
     """
 
-    q = scipy.stats.t.pdf(y, df=2 * alpha, loc=m_hat, scale=S_hat)
+    if log:
+        q = scipy.stats.t.logpdf(y, df=2 * alpha, loc=m_hat, scale=S_hat)
+    else:
+        q = scipy.stats.t.pdf(y, df=2 * alpha, loc=m_hat, scale=S_hat)
 
     return q
 
@@ -323,6 +327,38 @@ def _evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
         D = 0.5 * np.log(np.linalg.det(S_N))
 
     return A + B + C + D
+
+
+def _empirical_bayes(params, basis, X, y):
+    """Return the negative log marginal likelihood.
+
+    Fit model parameters to the data using an uninformative prior and return
+    the negative log marginal likelihood.
+
+    Args:
+      basis (|callable|): Function for performing basis function expansion on
+        the input data.
+      params (|ndarra|): (N,) non-linear basis function parameters.
+      X (|ndarray|): (N x M) model inputs.
+      y (|ndarray|): (N x 1) target outputs.
+
+    Returns:
+      |float|: the negative log marginal likelihood.
+
+    """
+
+    try:
+        phi = basis(X, params)
+        mu, S, alpha, beta = _uninformative_fit(phi, y)
+
+        m_hat = _predict_mean(phi, mu)
+        S_hat = _predict_variance(phi, np.linalg.inv(S), alpha, beta)
+        nlml = -np.sum(_posterior_likelihood(y, m_hat, S_hat, alpha))
+    except:
+        print params
+        raise
+
+    return nlml
 
 # --------------------------------------------------------------------------- #
 #                               Module Objects
