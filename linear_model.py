@@ -338,7 +338,7 @@ def _empirical_bayes(params, basis, X, y):
     Args:
       basis (|callable|): Function for performing basis function expansion on
         the input data.
-      params (|ndarra|): (N,) non-linear basis function parameters.
+      params (|ndarray|): (N,) non-linear basis function parameters.
       X (|ndarray|): (N x M) model inputs.
       y (|ndarray|): (N x 1) target outputs.
 
@@ -418,6 +418,7 @@ class BayesianLinearModel(object):
 
         # Ensure the basis function expansion is a callable function.
         self.__basis = basis
+        self.__basis_params = None
         if not callable(basis):
             msg = "The input 'basis' must be a callable function."
             raise Exception(msg)
@@ -622,14 +623,52 @@ class BayesianLinearModel(object):
     def __design_matrix(self, X):
         """Perform basis function expansion to create design matrix."""
 
-        # Perform basis function expansion.
-        try:
-            return self.__basis(X)
-        except Exception as e:
-            msg = 'Could not perform basis function expansion with the '
-            msg += 'function %s\n\n' % str(self.__basis)
-            msg += 'Error thrown:\n %s' % str(e)
-            raise Exception(msg)
+        # Perform basis function expansion without parameters.
+        if self.__basis_params is not None:
+            try:
+                return self.__basis(X)
+            except Exception as e:
+                msg = 'Could not perform basis function expansion with the '
+                msg += 'function %s\n\n' % str(self.__basis)
+                msg += 'Error thrown:\n %s' % str(e)
+                raise Exception(msg)
+
+        # Perform basis function expansion WITH parameters.
+        else:
+            try:
+                return self.__basis(X, self.__basis_params)
+            except Exception as e:
+                msg = 'Could not perform basis function expansion with '
+                msg += 'parameters and the function %s\n\n' % str(self.__basis)
+                msg += 'Error thrown:\n %s' % str(e)
+                raise Exception(msg)
+
+    def empirical_bayes(self, x0, X, y):
+        """Fit (non-linear) parameters to basis function using empirical Bayes.
+
+        The optimal parameters are found by minimising the negative log
+        marginal likelihood. An uninformative prior is used to fit the linear
+        coefficients.
+
+        Args:
+          params (|ndarray|): (N,) starting (non-linear) basis function parameters.
+          X (|ndarray|): (N x M) model inputs.
+          y (|ndarray|): (N x 1) target outputs.
+
+        Returns:
+          |ndarray|: parameters of the basis function.
+
+        """
+
+        # Find optimal parameters by minimising negative log marginal
+        # likelihood.
+        sol = scipy.optimize.minimize(_empirical_bayes,
+                                      x0, args=(self.__basis, X, y),
+                                      method='COBYLA')
+
+        # Store optimal parameters.
+        self.__basis_params = sol.x
+        return self.__basis_params
 
     def update(self, X, y):
         r"""Update sufficient statistics of the Normal-inverse-gamma distribution.
