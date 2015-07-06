@@ -36,34 +36,30 @@ from numpy.core.umath_tests import inner1d
 # --------------------------------------------------------------------------- #
 #                              Module Functions
 # --------------------------------------------------------------------------- #
+#
+# The methods in this section implement the main equations and functionality of
+# the Bayesian linear model. They are used as building blocks for the
+# BayesianLinearModel() object - which is a convenience for error checking and
+# maintaining variables (mostly the sufficient statistics).
+#
+# The functions in this section have been implemented as 'private'. That is,
+# they are not visible in interactive sessions and are included in the sphinx
+# documentation. However, since the names have not been fully mangled, they can
+# still be accessed easily. They may be useful for other applications, however
+# doing so comes with the caveat of less complete documentation and no error
+# checking.
 
 
 def _update(X, y, mu, S, alpha, beta):
-    r"""Update sufficient statistics of the Normal-inverse-gamma distribution.
-
-    .. math::
-
-        \mathbf{w}_N &= \mathbf{V_N}\left(\mathbf{V_0}^{-1}\mathbf{w}_0 +
-                                          \mathbf{X}^T\mathbf{y}\right)        \\
-        \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \mathbf{X}^T\mathbf{X}\right)^{-1} \\
-        a_N          &= a_0 + \frac{n}{2}                                \\
-        b_N          &= b_0 + \frac{k}{2}
-                        \left(\mathbf{w}_0^T\mathbf{V}_0^{-1}\mathbf{w}_0 +
-                              \mathbf{y}^T\mathbf{y} -
-                              \mathbf{w}_N^T\mathbf{V}_N^{-1}\mathbf{w}_N
-                        \right)
+    """Update sufficient statistics of the Normal-inverse-gamma distribution.
 
     Args:
       X (|ndarray|): (N x M) model inputs.
       y (|ndarray|): (N x 1) target outputs.
-      mu (|ndarray|): Mean (:math:`\mathbf{w}_0`) of the normal
-        distribution.
-      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
-        distribution.
-      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
-        distribution.
-      beta (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
-        distribution.
+      mu (|ndarray|): Mean of the normal distribution.
+      S (|ndarray|): Dispersion of the normal distribution.
+      alpha (|float|): Shape parameter of the inverse Gamma distribution.
+      beta (|float|): Scale parameter of the inverse Gamma distribution.
 
     Returns:
       |tuple|: The updated sufficient statistics are return as a tuple (mu, S,
@@ -105,16 +101,7 @@ def _update(X, y, mu, S, alpha, beta):
 
 
 def _uninformative_fit(X, y):
-    r"""Initialise sufficient statistics using an uninformative prior.
-
-    .. math::
-
-        \mathbf{w}_N &= \mathbf{V_N}\mathbf{X}^T\mathbf{y}         \\
-        \mathbf{V_N} &= \left(\mathbf{X}^T\mathbf{X}\right)^{-1}   \\
-        a_N          &= \frac{N - D}{2}                            \\
-        b_N          &= \frac{1}{2}
-                        \left(\mathbf{y} - \mathbf{X}\mathbf{w}_N\right)^T
-                        \left(\mathbf{y} - \mathbf{X}\mathbf{w}_N\right)
+    """Initialise sufficient statistics using an uninformative prior.
 
     Args:
       X (|ndarray|): (N x M) model inputs.
@@ -141,10 +128,8 @@ def _predict_mean(X, mu):
     """Calculate posterior predictive mean.
 
     Args:
-      X (|ndarray|): (N x M) input query locations (:math:`\tilde{\mathbf{X}}`)
-          to perform prediction.
-      mu (|ndarray|): Mean (:math:`\mathbf{w}_0`) of the normal
-        distribution.
+      X (|ndarray|): (N x M) input query locations to perform prediction.
+      mu (|ndarray|): Mean of the normal distribution.
 
     Returns:
       |ndarray|: posterior mean
@@ -160,24 +145,20 @@ def _predict_variance(X, S, alpha, beta):
     """Calculate posterior predictive variance.
 
     Args:
-      X (|ndarray|): (N x M) input query locations (:math:`\tilde{\mathbf{X}}`)
-          to perform prediction.
-      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
-        distribution.
-      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
-        distribution.
-      beta (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
-        distribution.
+      X (|ndarray|): (N x M) input query locations to perform prediction.
+      S (|ndarray|): Dispersion of the normal distribution.
+      alpha (|float|): Shape parameter of the inverse Gamma distribution.
+      beta (|float|): Scale parameter of the inverse Gamma distribution.
 
     Returns:
       |ndarray|: posterior variance
 
     """
 
-    # Note that the scaling parameter is not equal to the variance in
-    # the general case. In the limit, as the number of degrees of
-    # freedom reaches infinity, the scale parameter becomes equivalent
-    # to the variance of a Gaussian.
+    # Note that the scaling parameter is not equal to the variance in the
+    # general case. In the limit, as the number of degrees of freedom reaches
+    # infinity, the scale parameter becomes equivalent to the variance of a
+    # Gaussian.
     uw = np.dot(X, np.linalg.solve(S, X.T))
     S_hat = (beta / alpha) * (np.eye(len(X)) + uw)
     S_hat = np.sqrt(np.diag(S_hat))
@@ -192,11 +173,9 @@ def _posterior_likelihood(y, m_hat, S_hat, alpha, log=False):
       y (|ndarray|): (N x 1) output query locations.
       m_hat (|ndarray|): Predicted mean.
       S_hat (|ndarray|): Predicted variance.
-      S (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
-        distribution.
-      alpha (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
-        distribution.
-      log (|bool|, *optional*): Set to true to return the log-likelihood.
+      S (|ndarray|): Dispersion of the normal distribution.
+      alpha (|float|): Shape parameter of the inverse Gamma distribution.
+      log (|bool|, *optional*): Set to |True| to return the log-likelihood.
 
     Returns:
       |ndarray|: posterior variance
@@ -211,62 +190,23 @@ def _posterior_likelihood(y, m_hat, S_hat, alpha, log=False):
     return q
 
 
-def _evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
-    r"""Return log marginal likelihood of the data (model evidence).
+def _model_evidence(N, S_N, alpha_N, beta_N,
+                    S_0=None, alpha_0=None, beta_0=None,
+                    log=True):
+    """Return log marginal likelihood of the data (model evidence).
 
-    The log marginal likelihood is calculated by taking the log of the
-    following equation:
-
-    .. math::
-
-        \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
-
-        p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
-                                     \frac{\det{V_N}^\frac{1}{2}}
-                                          {\det{V_0}^\frac{1}{2}}
-                                     \frac{b_0^{a_0}}
-                                          {b_N^{a_N}}
-                                     \frac{\Gamma\left(a_N\right)}
-                                          {\Gamma\left(a_0\right)}
-
-    Note that the default prior is an improper, uninformative prior. The
-    marginal likelihood equation, specified above, equation is undefined
-    for improper priors. To approximate the marginal likelihood in this
-    situation, the prior sufficient statistics :math:`\left(V_0, a_0,
-    b_0\right)` are selectively ignored if they are unset. If all prior
-    sufficient statistics are unset (default) the marginal likelihood
-    equation is approximated as:
-
-    .. math::
-
-        \renewcommand{\det} [1]{{\begin{vmatrix}#1\end{vmatrix}}}
-
-        p\left(\mathcal{D} \right) = \frac{1}{2\pi^\frac{N}{2}}
-                                     \det{V_N}^\frac{1}{2}
-                                     \frac{1}
-                                          {b_N^{a_N}}
-                                     \Gamma\left(a_N\right)
-
-    Although this equation returns an approximate marginal likelihood, it
-    can still be used for model selection. The omitted terms, which cannot
-    be evaluated, create a constant which scales the final result. During
-    model selection this constant will be identical across all models and
-    can safely be ignored.
+    Note, if any of the optional parameters are set to |None|, their
+    uninformative value will be used.
 
     Args:
       N (|int|): Number of observations.
-      S_N (|ndarray|): Dispersion (:math:`\mathbf{V}_0`) of the normal
-        distribution.
-      alpha_N (|float|): Shape parameter (:math:`a_0`) of the inverse Gamma
-        distribution.
-      beta_N (|float|): Scale parameter (:math:`b_0`) of the inverse Gamma
-        distribution.
-      S_0 (|ndarray|, *optional*): Prior dispersion (:math:`\mathbf{V}_0`) of
-        the normal distribution. Set to |None| to use uninformative value.
-      alpha_0 (|float|, *optional*): Prior shape parameter (:math:`a_0`) of the
-        inverse Gamma distribution. Set to |None| to use uninformative value.
-      beta_0 (|float|, *optional*): Prior scale parameter (:math:`b_0`) of the
-        inverse Gamma distribution. Set to |None| to use uninformative value.
+      S_N (|ndarray|): Dispersion of the normal distribution.
+      alpha_N (|float|): Shape parameter of the inverse Gamma distribution.
+      beta_N (|float|): Scale parameter of the inverse Gamma distribution.
+      S_0 (|ndarray|, *optional*): Prior dispersion of the normal distribution.
+      alpha_0 (|float|, *optional*): Prior shape parameter of the inverse Gamma distribution.
+      beta_0 (|float|, *optional*): Prior scale parameter of the inverse Gamma distribution.
+      log (|bool|, *optional*): Set to |False| to return the (non-log) likelihood.
 
     Returns:
       |float|: The log marginal likelihood is returned.
@@ -326,18 +266,20 @@ def _evidence(N, S_N, alpha_N, beta_N, S_0=None, alpha_0=None, beta_0=None):
     else:
         D = 0.5 * np.log(np.linalg.det(S_N))
 
-    return A + B + C + D
+    if log:
+        return A + B + C + D
+    else:
+        return np.exp(A + B + C + D)
 
 
-def _empirical_bayes(params, basis, X, y):
+def _negative_log_marginal_likelihood(params, basis, X, y):
     """Return the negative log marginal likelihood.
 
-    Fit model parameters to the data using an uninformative prior and return
-    the negative log marginal likelihood.
+    Note, this method is primarily for use within a convex optimiser
+    (e.g. scipy.optimize.minimize).
 
     Args:
-      basis (|callable|): Function for performing basis function expansion on
-        the input data.
+      basis (|callable|): Function for performing basis function expansion.
       params (|ndarray|): (N,) non-linear basis function parameters.
       X (|ndarray|): (N x M) model inputs.
       y (|ndarray|): (N x 1) target outputs.
@@ -644,11 +586,20 @@ class BayesianLinearModel(object):
                 raise Exception(msg)
 
     def empirical_bayes(self, x0, X, y):
-        """Fit (non-linear) parameters to basis function using empirical Bayes.
+        r"""Fit (non-linear) parameters to basis function using empirical Bayes.
 
         The optimal parameters are found by minimising the negative log
         marginal likelihood. An uninformative prior is used to fit the linear
-        coefficients.
+        coefficients where:
+
+        .. math::
+
+            \mathbf{w}_N &= \mathbf{V_N}\mathbf{\Phi}^T\mathbf{y}            \\
+            \mathbf{V_N} &= \left(\mathbf{\Phi}^T\mathbf{\Phi}\right)^{-1}   \\
+            a_N          &= \frac{N - D}{2}                                  \\
+            b_N          &= \frac{1}{2}
+                            \left(\mathbf{y} - \mathbf{\Phi}\mathbf{w}_N\right)^T
+                            \left(\mathbf{y} - \mathbf{\Phi}\mathbf{w}_N\right)
 
         Args:
           params (|ndarray|): (N,) starting (non-linear) basis function parameters.
@@ -662,7 +613,7 @@ class BayesianLinearModel(object):
 
         # Find optimal parameters by minimising negative log marginal
         # likelihood.
-        sol = scipy.optimize.minimize(_empirical_bayes,
+        sol = scipy.optimize.minimize(_negative_log_marginal_likelihood,
                                       x0, args=(self.__basis, X, y),
                                       method='COBYLA')
 
@@ -685,9 +636,12 @@ class BayesianLinearModel(object):
 
         .. math::
 
-            \mathbf{w}_N &= \mathbf{V_N}\left(\mathbf{V_0}^{-1}\mathbf{w}_0 +
-                                              \Phi^T\mathbf{y}\right)        \\
-            \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} + \Phi^T\Phi\right)^{-1} \\
+            \mathbf{w}_N &= \mathbf{V_N}\left(
+                                \mathbf{V_0}^{-1}\mathbf{w}_0 +
+                                \mathbf{\Phi}^T\mathbf{y}
+                            \right)                                          \\
+            \mathbf{V_N} &= \left(\mathbf{V_0}^{-1} +
+                                  \mathbf{\Phi}^T\mathbf{\Phi}\right)^{-1}   \\
             a_N          &= a_0 + \frac{n}{2}                                \\
             b_N          &= b_0 + \frac{k}{2}
                             \left(\mathbf{w}_0^T\mathbf{V}_0^{-1}\mathbf{w}_0 +
@@ -857,7 +811,7 @@ class BayesianLinearModel(object):
         else:
             return m_hat
 
-    def evidence(self):
+    def evidence(self, log=True):
         r"""Return log marginal likelihood of the data (model evidence).
 
         The log marginal likelihood is calculated by taking the log of the
@@ -899,8 +853,12 @@ class BayesianLinearModel(object):
         model selection this constant will be identical across all models and
         can safely be ignored.
 
+        Args:
+          log (|bool|, *optional*): Set to |False| to return the (non-log)
+              marginal likelihood.
+
         Returns:
-          |float|: The log marginal likelihood is returned.
+          |float|: The (log) marginal likelihood is returned.
 
         Raises:
           ~exceptions.Exception: If the sufficient statistics have not been
@@ -914,9 +872,10 @@ class BayesianLinearModel(object):
             msg += "calling 'evidence()'. Run 'update()' first."
             raise Exception(msg)
 
-        return _evidence(self.__N,
-                         self.__S_N, self.__alpha_N, self.__beta_N,
-                         self.__S_0, self.__alpha_0, self.__beta_0)
+        return _model_evidence(self.__N,
+                               self.__S_N, self.__alpha_N, self.__beta_N,
+                               self.__S_0, self.__alpha_0, self.__beta_0,
+                               log=log)
 
     def random(self, samples=1):
         r"""Draw a random model from the posterior distribution.

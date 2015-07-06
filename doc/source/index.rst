@@ -38,7 +38,7 @@ where:
   :math:`M`-dimensional inputs.
 * :math:`\mathbf{w} = \{w_1, \ldots, w_N\}^T` is the vector of model
   parameters.
-* :math:`\Phi` is the design matrix where the input data,
+* :math:`\mathbf{\Phi}` is the design matrix where the input data,
   :math:`\mathbf{X}`, has been passed through the vector of nonlinear
   basis functions :math:`\mathbf{\phi} = \{\phi_1, \ldots, \phi_D\}`.
 * :math:`\mathbf{\epsilon}` is independent and identically distributed
@@ -52,7 +52,7 @@ likelihood:
 
     p(\mathbf{y} \vert \mathbf{X}, \mathbf{w}, \sigma^2) =
         \mathcal{N}\left(\mathbf{y} \vert
-                         \mathbf{X}\mathbf{w},
+                         \mathbf{\Phi}\mathbf{w},
                          \sigma^2\mathbf{I}_N
                    \right).
 
