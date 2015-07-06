@@ -106,6 +106,12 @@ closed form expressions.
 
        <hr>
 
+   .. automethod:: empirical_bayes
+
+   .. raw:: html
+
+       <hr>
+
    .. automethod:: predict
 
    .. raw:: html

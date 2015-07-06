@@ -624,7 +624,7 @@ class BayesianLinearModel(object):
         """Perform basis function expansion to create design matrix."""
 
         # Perform basis function expansion without parameters.
-        if self.__basis_params is not None:
+        if self.__basis_params is None:
             try:
                 return self.__basis(X)
             except Exception as e:
@@ -668,6 +668,16 @@ class BayesianLinearModel(object):
 
         # Store optimal parameters.
         self.__basis_params = sol.x
+
+        # Recover sufficient statistics from optimal parameters.
+        phi = self.__design_matrix(X)
+        self.__mu_N, self.__S_N, self.__alpha_N, self.__beta_N = \
+            _uninformative_fit(phi, y)
+
+        # The sufficient statistics have been initialised. Prevent object from
+        # checking the sufficient statistics again.
+        self.__initialised = True
+
         return self.__basis_params
 
     def update(self, X, y):
