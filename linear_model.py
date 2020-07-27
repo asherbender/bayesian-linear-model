@@ -297,7 +297,7 @@ def _negative_log_marginal_likelihood(params, basis, X, y):
         S_hat = _predict_variance(phi, np.linalg.inv(S), alpha, beta)
         nlml = -np.sum(_posterior_likelihood(y, m_hat, S_hat, alpha))
     except:
-        print params
+        print(params)
         raise
 
     return nlml
