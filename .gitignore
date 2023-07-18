@@ -4,6 +4,8 @@
 
 # Do not version intermediary documentation files.
 doc/build/
+build/
+linear_model.egg-info/
 
 # Ignore ipython notebook temp files.
 example/.ipynb_checkpoints
