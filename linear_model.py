@@ -31,7 +31,7 @@
 import numpy as np
 import scipy.stats
 from scipy.special import gammaln
-from numpy.core.umath_tests import inner1d
+#from numpy.core.umath_tests import inner1d
 
 # --------------------------------------------------------------------------- #
 #                              Module Functions
@@ -938,7 +938,7 @@ class BayesianLinearModel(object):
         # Create N random samples (1xD) drawn from multiple, random and unique
         # multivariate normal distributions.
         L = np.rollaxis(np.linalg.cholesky(sigma.T).T, 0, 2)
-        sigma = inner1d(np.rollaxis(rn, 0, 2).T, L.T)
+        sigma = np.dot(np.rollaxis(rn, 0, 2).T, L.T)
 
         # Return (NxD) samples drawn from multivariate-normal, inverse-gamma
         # distribution.
